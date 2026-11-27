@@ -18,9 +18,12 @@
 [![CI](https://github.com/wendellhua/web-G/actions/workflows/ci.yml/badge.svg)](https://github.com/wendellhua/web-G/actions/workflows/ci.yml)
 [![Deploy Pages](https://github.com/wendellhua/web-G/actions/workflows/deploy-pages.yml/badge.svg)](https://wendellhua.github.io/web-G/)
 
-**[🎮 Play Online (GitHub Pages)](https://wendellhua.github.io/web-G/)** · [Gameplay Demo](#-gameplay-demo--screenshots) · [Features](#-core-gameplay--features) · [Quick Start](#-quick-start) · [SDD-G Reference](#-sdd-g-spec-driven-game-development-reference) · [Architecture](#-architecture--quality-gates) · [GitHub Actions Deploy](#-github-actions--pages-deployment)
+**[🎮 Play Online Now](https://wendellhua.github.io/web-G/)** · [Gameplay Demo](#-gameplay-demo--screenshots) · [Features](#-core-gameplay--features) · [Quick Start](#-quick-start) · [SDD-G Reference](#-sdd-g-spec-driven-game-development-reference) · [Architecture](#-architecture--quality-gates) · [GitHub Actions Deploy](#-github-actions--pages-deployment)
 
 </div>
+
+> 🎮 **Play Online First (Recommended — Zero Setup, Instant Browser Play)**:  
+> 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)** (Supports `WASD` / Arrow Keys / Mouse drag & Touch controls, local save persistence, and `1× / 2× / 3×` battle speed)
 
 ---
 
@@ -248,8 +251,9 @@ Pre-configured workflows are ready out of the box:
 1. **Continuous Integration ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml))**
    - Runs all 6 quality gates (`typecheck`, `lint`, `test:unit`, `test:sim`, `build`, and Playwright Chromium `test:e2e`) on every push and pull request.
 2. **Automatic GitHub Pages Deployment ([`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml))**
+   - **Live Playable Build**: 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)** (automatically rebuilt and published on every push to `main`).
    - `vite.config.ts` sets `base: './'` so all assets resolve cleanly under `https://<username>.github.io/<repo>/`.
-   - **Enable in 2 steps**:
+   - **Enable on a Fork (2 Steps)**:
      1. Push this repository to GitHub (`main` or `master` branch).
      2. Open **Settings → Pages → Build and deployment → Source**, select **`GitHub Actions`**, and your playable build publishes automatically!
 

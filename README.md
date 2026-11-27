@@ -18,9 +18,12 @@
 [![CI](https://github.com/wendellhua/web-G/actions/workflows/ci.yml/badge.svg)](https://github.com/wendellhua/web-G/actions/workflows/ci.yml)
 [![Deploy Pages](https://github.com/wendellhua/web-G/actions/workflows/deploy-pages.yml/badge.svg)](https://wendellhua.github.io/web-G/)
 
-**[🎮 在线试玩（GitHub Pages）](https://wendellhua.github.io/web-G/)** · [实机演示](#-实机演示与画面一览) · [核心玩法](#-核心玩法与内容特色) · [快速开始](#-快速开始) · [SDD-G 工程实践](#-sdd-g-规格驱动开发全流程参考) · [架构设计](#-技术架构与质量门禁) · [GitHub Actions 部署](#-github-actions--pages-一键部署)
+**[🎮 立即在线试玩](https://wendellhua.github.io/web-G/)** · [实机演示](#-实机演示与画面一览) · [核心玩法](#-核心玩法与内容特色) · [快速开始](#-快速开始) · [SDD-G 工程实践](#-sdd-g-规格驱动开发全流程参考) · [架构设计](#-技术架构与质量门禁) · [GitHub Actions 部署](#-github-actions--pages-一键部署)
 
 </div>
+
+> 🎮 **推荐优先在线体验（无需下载与配置环境，打开浏览器即玩）**：  
+> 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)**（支持桌面端 `WASD` / 方向键 / 鼠标拖拽与移动端触控，内置本地存档与 `1× / 2× / 3×` 变速）
 
 ---
 
@@ -281,8 +284,9 @@ SimulationWorld [src/core/** — 100% Headless & Deterministic]
 1. **自动化持续集成（[`.github/workflows/ci.yml`](./.github/workflows/ci.yml)）**
    - 每次向 `main` / `master` 推送或提交 PR 时，自动运行 `typecheck → lint → test:unit → test:sim → build → Playwright Chromium E2E` 全套 6 道门禁。
 2. **自动发布至 GitHub Pages（[`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml)）**
+   - **当前在线托管地址**：👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)**（每次向 `main` 推送会自动触发构建并更新线上版本）。
    - `vite.config.ts` 已配置 `base: './'` 相对资源路径，完美兼容 `https://<username>.github.io/<repo>/` 子路径托管。
-   - **开启方式（仅需 2 步）**：
+   - **Fork 后自建开启方式（仅需 2 步）**：
      1. 将本仓库推送至你的 GitHub 仓库（默认分支 `main` 或 `master`）。
      2. 进入 GitHub 仓库的 **Settings → Pages → Build and deployment → Source**，选择 **`GitHub Actions`**，保存后即自动触发构建并发布在线可玩链接！
 

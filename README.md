@@ -29,7 +29,7 @@
 **《黑潮突围（VOID RUNNER）》** 是一款零重型游戏引擎依赖、纯原生 **TypeScript + HTML5 Canvas 2D + Web Audio API** 打造的深空科幻弹幕生存（Survivors-like / Bullet-Heaven）网页游戏：
 
 - **紧凑高能的割草推图体验**：五大渐进阶段 × 36 递增关卡、五阶星舰形态自动觉醒、6 大主动武器 × 6 大被动核心 → 6 大超武进化公式、每 2 分钟降临的多阶段 Boss「虚空织主」、全息激光预警走廊、充能祭坛与 8 项永久局外天赋树。
-- **SDD-G（Spec-Driven Development for Games）经典开源范本**：完整沉淀了从 1 页游戏设计规格书（GDD-Lite）、单文件灰盒手感原型、Zod 强契约数据表、纯无头确定性仿真内核（支持 45,000 帧自动化压测）到 Playwright 真实浏览器 E2E 回归的全链路工程资产与提示词手册。
+- **SDD-G（Spec-Driven Development for Games）经典开源范本**：完整沉淀了从 1 页游戏设计规格书（GDD-Lite）、单文件灰盒手感原型、Zod 强契约数据表、纯无头确定性仿真内核（支持 45,000 帧自动化压测）到 Playwright 真实浏览器 E2E 回归的全链路工程资产。重做这条流水线时，先读规则宪章 [`docs/CLAUDE.md`](./docs/CLAUDE.md)，再按 [`SDD-G 工作流提示词手册`](./docs/SDD-G工作流提示词手册.md) 逐阶段执行。
 
 ---
 
@@ -174,8 +174,31 @@ flowchart LR
     S2 --> S3["阶段 3~5<br/>架构 / 技术 / Zod 契约"]
     S3 --> S4["阶段 6~7<br/>评审冻结 + 脚手架"]
     S4 --> S5["阶段 8<br/>无头内核 + 表现层"]
-    S5 --> S6["阶段 9~10<br/>45k 帧压测 + E2E + 调优"]
+    S5 --> S6["阶段 9<br/>45k 帧压测 + E2E + 调优"]
 ```
+
+下方 01–09 是《黑潮突围》已经冻结的阶段产物。同一条流水线要在下一款网页游戏里重跑，先读仍在生效的两份规则：宪章规定每个阶段允许做什么，提示词手册把这些规则变成可以逐段复制的会话。
+
+### 规则宪章与提示词手册
+
+| 文档 | 角色 | 怎么用 |
+| :--- | :--- | :--- |
+| [`docs/CLAUDE.md`](./docs/CLAUDE.md) | **项目级规则宪章** | 它写的是各阶段硬约束。阶段 1 只澄清玩法，禁止写代码。阶段 2 的灰盒留在 `prototype/`，禁止被 `src/` 引用。阶段 3–7 未获批准，禁止改生产代码。第 4–7 节锁定技术红线：`src/core/` 禁止浏览器 API 与 `Math.random()`、固定步长 `1/60`、配置与存档、模块通信，以及 `typecheck` / `lint` / `test:unit` / `test:sim` / `test:e2e` 门禁。 |
+| [`docs/SDD-G工作流提示词手册.md`](./docs/SDD-G工作流提示词手册.md) | **9 阶段执行手册** | 与宪章配对使用。阶段 1→9 每段提示词都要求先读 `CLAUDE.md` 的对应章节，并写明输入文档、目标产物和禁止事项。阶段 8 拆成五条独立提示词：L1 骨架 → L2 无头内核 → L3 表现层 → L4 UI → L5 内容填充。一阶段经人工确认并冻结后，才复制下一阶段。 |
+
+| 手册阶段 | 必须遵守的宪章 | 本阶段冻结的产物 |
+| :--- | :--- | :--- |
+| 1 概念与玩法 | 第 1 节 | [`docs/01`](./docs/01.游戏设计规格书%28GDD-Lite%29.md) 游戏设计规格书 |
+| 2 灰盒验证 | 第 2 节 | [`prototype/`](./prototype/index.html) + [`docs/02`](./docs/02.灰盒原型验证结论.md) |
+| 3 模块与状态机 | 第 3 节 | [`docs/03`](./docs/03.系统模块与状态流转设计.md) |
+| 4 运行时架构 | 第 4 节 | [`docs/04`](./docs/04.技术选型与运行时架构设计.md) |
+| 5 数据与存档 | 第 5 节 | [`docs/05`](./docs/05.数据模型与配置表设计.md) + `schemas/` |
+| 6 通信与视听 | 第 6 节 | [`docs/06`](./docs/06.模块接口与资源视听规范.md) |
+| 7 评审冻结 | 第 3 节，并交叉审计全文 | [`docs/07`](./docs/07.设计方案评审与冻结报告.md)，含 L1–L5 任务拓扑 |
+| 8 分层实现 | 第 4–7 节 | `src/` 按 L1→L5 交付，每层过 `typecheck` + `lint` + `test:unit` |
+| 9 压测与调优 | 第 7.3 节 | `tests/simulation/`、`tests/e2e/` + [`docs/08`](./docs/08.质量验收与调优报告.md) |
+
+[`docs/09` 美术风格圣经](./docs/09.美术风格圣经与资产清单规范.md) 在规格冻结之后补齐视觉与资产清单，不单独占手册里的一个编码阶段。阶段 8、9 的提示词直接产出代码与测试，不再另写一份同名设计书。
 
 ### 完整 SDD 文档导航（支持中英双语查阅 · [English Docs Index](./docs/en/README.md)）
 
@@ -225,7 +248,11 @@ SimulationWorld [src/core/** — 100% Headless & Deterministic]
 │   │   └── deploy-pages.yml      # GitHub Pages 自动构建与发布工作流
 │   ├── ISSUE_TEMPLATE/           # 标准化 Bug / Feature Issue 模板
 │   └── PULL_REQUEST_TEMPLATE.md  # PR 质量门禁自检模板
-├── docs/                         # SDD-G 阶段 1~9 完整设计/架构/验收文档与媒体展柜
+├── docs/                         # 规则宪章、9 阶段提示词、阶段规格与媒体
+│   ├── CLAUDE.md                 # 项目级规则宪章（各阶段硬约束）
+│   ├── SDD-G工作流提示词手册.md   # 阶段 1→9 可复制提示词
+│   ├── 01–09 *.md                # 已冻结的设计 / 评审 / 验收规格
+│   ├── en/                       # 阶段规格英文译本与索引
 │   └── media/                    # 16:9 实机演示视频、动态 GIF 与高清截图
 ├── prototype/                    # 阶段 2 单文件灰盒手感原型（双击即可浏览器运行）
 ├── public/assets/                # 硬表面厚涂透明 PNG 精灵、UI 图标、立绘与无缝星空背景
@@ -241,7 +268,6 @@ SimulationWorld [src/core/** — 100% Headless & Deterministic]
 │   ├── unit/                     # 43 个核心机制、FSM、确定性与配置契约单元测试
 │   ├── simulation/               # 45,000 帧五阶段无头机器人压力测试
 │   └── e2e/                      # Playwright 真实浏览器端到端回归测试
-├── CLAUDE.md                     # AI-Native 开发与工程红线规范
 ├── CONTRIBUTING.md               # 开源贡献指南
 └── LICENSE                       # MIT 开源协议
 ```

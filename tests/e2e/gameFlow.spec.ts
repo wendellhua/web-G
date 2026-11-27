@@ -169,7 +169,11 @@ test.describe('VOID RUNNER V2.0 Real-Browser E2E Regression Suite', () => {
       const bridge = (window as unknown as { __VOID_RUNNER_DEBUG__: DebugBridgeHandle }).__VOID_RUNNER_DEBUG__;
       bridge.injectTestAction('kill_all_bosses');
     });
-    await expect(page.getByTestId('modal-victory')).toBeVisible();
+    // Boss 死亡后先进入 3 秒过渡演出（展示非遮挡横幅、胜利弹窗尚未弹出）
+    await expect(page.getByTestId('banner-boss-defeated')).toBeVisible();
+    await expect(page.getByTestId('modal-victory')).toHaveCount(0);
+    // 经过完整 3 秒真实演出后自动弹出胜利弹窗与形态 II 解锁公告
+    await expect(page.getByTestId('modal-victory')).toBeVisible({ timeout: 6000 });
     await expect(page.getByTestId('banner-form-unlocked')).toBeVisible();
     await expect(page.getByTestId('banner-form-unlocked')).toContainText('形态 II · 脉冲强化体');
     // 阶段 1~4 不显示无尽模式按钮
@@ -195,12 +199,13 @@ test.describe('VOID RUNNER V2.0 Real-Browser E2E Regression Suite', () => {
     });
     expect(stage5Hud.weaponSlots[0]?.level).toBe(5);
 
-    // 击破阶段 5 全部 4 只 Boss -> 胜利弹窗展示「进入无尽深渊」 -> 进入无尽 -> 战死二段结算
+    // 击破阶段 5 全部 4 只 Boss -> 经过 3 秒 Boss 死亡过渡动画 -> 胜利弹窗展示「进入无尽深渊」 -> 进入无尽 -> 战死二段结算
     await page.evaluate(() => {
       const bridge = (window as unknown as { __VOID_RUNNER_DEBUG__: DebugBridgeHandle }).__VOID_RUNNER_DEBUG__;
       bridge.injectTestAction('kill_all_bosses');
     });
-    await expect(page.getByTestId('modal-victory')).toBeVisible();
+    await expect(page.getByTestId('banner-boss-defeated')).toBeVisible();
+    await expect(page.getByTestId('modal-victory')).toBeVisible({ timeout: 6000 });
     await expect(page.getByTestId('btn-continue-endless')).toBeVisible();
 
     await page.getByTestId('btn-continue-endless').click();

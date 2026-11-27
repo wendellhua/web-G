@@ -174,7 +174,7 @@ function bootstrap(): void {
       stepFrames: (frameCount: number, moveInput: InputCommandFrame = { moveX: 0, moveY: 0 }) => {
         const safeCount = Math.max(0, Math.min(10000, Math.floor(frameCount)));
         for (let i = 0; i < safeCount; i++) {
-          if (!controller.world.isRunningPhase()) break;
+          if (!controller.world.isRunningPhase() && !controller.world.isVictoryOutro()) break;
           controller.step(FIXED_DT_SEC, moveInput);
           const events = controller.getFrameEvents();
           renderer.consumeEvents(events);
@@ -203,10 +203,17 @@ function bootstrap(): void {
             controller.world.debugJumpToTimeout();
             controller.debugFlushSettlement();
             break;
-          case 'kill_all_bosses':
+          case 'kill_all_bosses': {
             controller.world.debugKillAllStageBosses();
+            const events = controller.getFrameEvents();
+            if (events.length > 0) {
+              renderer.consumeEvents(events);
+              audio.consumeEvents(events);
+              controller.clearFrameEvents();
+            }
             controller.debugFlushSettlement();
             break;
+          }
           case 'kill_player':
             controller.world.debugDamagePlayer(99999);
             controller.debugFlushSettlement();
@@ -247,6 +254,27 @@ function bootstrap(): void {
         }
       }
       audio.setBgmState(controller.world.isRunningPhase(), controller.world.activeRunPhase === 'RUN_BOSS');
+    } else if (controller.world.isVictoryOutro()) {
+      // Boss 死亡 3 秒过渡期：强制真实 1× 流速推进（不受 2×/3× 倍速加速），主角停止移动、BGM 平滑退场
+      input.clearMovementKeys();
+      accumulatorSec += rawDtSec;
+      let substeps = 0;
+      while (accumulatorSec >= FIXED_DT_SEC && substeps < MAX_SUBSTEPS) {
+        controller.step(FIXED_DT_SEC, { moveX: 0, moveY: 0 });
+        const events = controller.getFrameEvents();
+        if (events.length > 0) {
+          renderer.consumeEvents(events);
+          audio.consumeEvents(events);
+          controller.clearFrameEvents();
+        }
+        accumulatorSec -= FIXED_DT_SEC;
+        substeps += 1;
+        if (!controller.world.isVictoryOutro()) {
+          accumulatorSec = 0;
+          break;
+        }
+      }
+      audio.setBgmState(false, false);
     } else {
       accumulatorSec = 0;
       audio.setBgmState(false, false);

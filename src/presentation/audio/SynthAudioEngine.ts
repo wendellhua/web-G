@@ -460,6 +460,25 @@ export class SynthAudioEngine {
           this.playNoiseBurst(0.32, 0.075, 'lowpass', 780, 160, 1.8);
           break;
         }
+        case 'BOSS_DEATH_OUTRO_STARTED': {
+          if (!this.canTrigger('boss_death_outro', 0, true)) break;
+          // 第一幕（0.00s – 1.25s）：结构过载低频轰鸣 + 5 次递进连锁殉爆
+          this.playTone(68, 1.25, 'sawtooth', 0.11, 46, 0);
+          [0.12, 0.34, 0.58, 0.82, 1.06].forEach((delay, idx) => {
+            this.playNoiseBurst(0.22, 0.085 + idx * 0.01, 'lowpass', 1200 + idx * 140, 140, 1.5, delay);
+            this.playTone(135 + idx * 18, 0.18, 'sawtooth', 0.075, 52, delay);
+          });
+          // 第二幕（1.25s – 1.65s）：奇点核心内爆拉升啸叫
+          this.playTone(140, 0.4, 'sine', 0.095, 620, 1.25);
+          this.playNoiseBurst(0.38, 0.08, 'bandpass', 420, 2400, 2.2, 1.25);
+          // 第三幕（1.65s）：超新星终极瓦解冲击波 + 舒缓金辉释放和弦（1.80s – 2.85s）
+          this.playTone(96, 0.85, 'sine', 0.16, 32, 1.65);
+          this.playNoiseBurst(0.75, 0.14, 'lowpass', 2400, 95, 1.2, 1.65);
+          [523.25, 659.25, 783.99, 987.77, 1046.5].forEach((f, idx) => {
+            this.playTone(f, 0.72, 'triangle', 0.065, undefined, 1.82 + idx * 0.11);
+          });
+          break;
+        }
         case 'RUN_VICTORY': {
           if (!this.canTrigger('victory', 0, true)) break;
           [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((f, idx) => {

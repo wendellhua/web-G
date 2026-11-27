@@ -85,6 +85,7 @@ import {
 import { recomputePlayerStats, type RunAltarAndFallbackBuffs } from '../systems/StatCalculator';
 
 export const FIXED_DT_SEC = 1 / 60;
+export const BOSS_VICTORY_OUTRO_DURATION_SEC = 3.0;
 const VIEWPORT_HALF_W = 640;
 const VIEWPORT_HALF_H = 360;
 const CELL_SIZE_PX = 64;
@@ -236,6 +237,16 @@ export class SimulationWorld {
   private activeSettlementModal: SettlementModalPayload | null = null;
   private pendingSettlementOutput: SettlementEventOutput | null = null;
 
+  // Boss 击杀后的 3 秒过渡动画状态（独立于战斗倍速与关卡计时，让玩家充分释放紧张情绪）
+  private victoryOutroElapsedSec = 0;
+  private victoryOutroBossX = 0;
+  private victoryOutroBossY = 0;
+  private victoryOutroBossRadiusPx = 56;
+  private victoryOutroCanContinueEndless = false;
+  private lastKilledBossX = 0;
+  private lastKilledBossY = 0;
+  private lastKilledBossRadiusPx = 56;
+
   constructor() {
     this.economy = this.createEmptyEconomy();
     this.player = this.createInitialPlayer(1);
@@ -360,6 +371,14 @@ export class SimulationWorld {
     this.activeChestModal = null;
     this.activeSettlementModal = null;
     this.pendingSettlementOutput = null;
+    this.victoryOutroElapsedSec = 0;
+    this.victoryOutroBossX = 0;
+    this.victoryOutroBossY = 0;
+    this.victoryOutroBossRadiusPx = 56;
+    this.victoryOutroCanContinueEndless = false;
+    this.lastKilledBossX = 0;
+    this.lastKilledBossY = 0;
+    this.lastKilledBossRadiusPx = 56;
 
     // 开局投放 5 只初始集群怪，确保 3 秒内立刻开打
     for (let i = 0; i < 5; i++) {
@@ -392,6 +411,14 @@ export class SimulationWorld {
     this.activeChestModal = null;
     this.activeSettlementModal = null;
     this.pendingSettlementOutput = null;
+    this.victoryOutroElapsedSec = 0;
+    this.victoryOutroBossX = 0;
+    this.victoryOutroBossY = 0;
+    this.victoryOutroBossRadiusPx = 56;
+    this.victoryOutroCanContinueEndless = false;
+    this.lastKilledBossX = 0;
+    this.lastKilledBossY = 0;
+    this.lastKilledBossRadiusPx = 56;
     this.appState = 'TITLE';
     this.activeRunPhase = 'RUN_NORMAL';
   }
@@ -402,6 +429,10 @@ export class SimulationWorld {
       this.appState === 'RUN_BOSS' ||
       this.appState === 'RUN_ENDLESS'
     );
+  }
+
+  public isVictoryOutro(): boolean {
+    return this.appState === 'VICTORY_OUTRO';
   }
 
   public getFrameEvents(): readonly GameEvent[] {
@@ -448,10 +479,16 @@ export class SimulationWorld {
 
   // ==================== 固定步长主模拟管线（严格确定性顺序） ====================
   public step(dtSec: number, input: InputCommandFrame): void {
-    if (!this.isRunningPhase()) return;
-
     const dt = clamp(dtSec, 0, 0.05);
     if (dt <= 0) return;
+
+    // 终局 Boss 死亡 3 秒过渡动画：停止玩家移动、冻结关卡倒计时、免疫伤害与弹窗打断，3 秒后弹出胜利结算
+    if (this.appState === 'VICTORY_OUTRO') {
+      this.stepVictoryOutro(dt);
+      return;
+    }
+
+    if (!this.isRunningPhase()) return;
 
     this.tickCount += 1;
     this.elapsedSec += dt;
@@ -1903,6 +1940,9 @@ export class SimulationWorld {
     }
 
     if (e.tier === 'boss') {
+      this.lastKilledBossX = e.x;
+      this.lastKilledBossY = e.y;
+      this.lastKilledBossRadiusPx = e.radiusPx;
       const idx = this.activeBossIds.indexOf(e.id);
       if (idx !== -1) this.activeBossIds.splice(idx, 1);
       this.bossesKilled += 1;
@@ -2099,56 +2139,151 @@ export class SimulationWorld {
     this.eventBus.emit({ type: 'RUN_GAME_OVER', grantedCrystals: granted, isEndlessEnd });
   }
 
+  /** 击杀本关最后一只 Boss 后进入 3 秒过渡动画：清场剩余杂兵/弹幕、停下主角、播放 Boss 死亡演出 */
+  private beginVictoryOutro(): void {
+    this.modalQueue.length = 0;
+    this.enemyBullets.length = 0;
+    this.telegraphs.length = 0;
+    this.pendingCollapses.length = 0;
+    this.orbitalBlades.length = 0;
+
+    // 肃清场上残余小怪与精英（最多派发 24 条击杀爆炸事件，保证视觉清场爽感且不超粒子预算）
+    let emittedPurges = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
+      const rem = this.enemies[i];
+      if (!rem || rem.hp <= 0 || rem.tier === 'boss') continue;
+      rem.hp = 0;
+      rem.entityState = 'DEAD';
+      if (emittedPurges < 24) {
+        const cfg = ENEMY_BY_ID[rem.enemyId];
+        this.eventBus.emit({
+          type: 'ENEMY_KILLED',
+          enemyId: rem.enemyId,
+          tier: rem.tier,
+          x: rem.x,
+          y: rem.y,
+          colorHex: cfg.colorHex,
+        });
+        emittedPurges += 1;
+      }
+    }
+    this.enemies.length = 0;
+    this.activeBossIds.length = 0;
+
+    this.victoryOutroCanContinueEndless = this.currentStage.enableEndlessOnVictory && this.player.hp > 0;
+    this.victoryOutroElapsedSec = 0;
+    this.victoryOutroBossX =
+      this.lastKilledBossX !== 0 || this.lastKilledBossY !== 0 ? this.lastKilledBossX : this.player.x;
+    this.victoryOutroBossY =
+      this.lastKilledBossX !== 0 || this.lastKilledBossY !== 0 ? this.lastKilledBossY : this.player.y;
+    this.victoryOutroBossRadiusPx = this.lastKilledBossRadiusPx || 56;
+    this.appState = 'VICTORY_OUTRO';
+
+    this.eventBus.emit({
+      type: 'BOSS_DEATH_OUTRO_STARTED',
+      x: this.victoryOutroBossX,
+      y: this.victoryOutroBossY,
+      radiusPx: this.victoryOutroBossRadiusPx,
+      durationSec: BOSS_VICTORY_OUTRO_DURATION_SEC,
+    });
+  }
+
+  /** 3 秒 Boss 死亡过渡期：玩家原地停下放松情绪，残留光效柔和消散，3 秒整弹出胜利结算 */
+  private stepVictoryOutro(dt: number): void {
+    this.tickCount += 1;
+    this.victoryOutroElapsedSec = Math.min(
+      BOSS_VICTORY_OUTRO_DURATION_SEC,
+      this.victoryOutroElapsedSec + dt,
+    );
+
+    // 柔和衰减场上残留的激光/落雷/冲击波与弹幕
+    for (let i = this.beamVisuals.length - 1; i >= 0; i--) {
+      const b = this.beamVisuals[i];
+      if (!b) continue;
+      b.lifeSec -= dt * 2;
+      if (b.lifeSec <= 0) this.beamVisuals.splice(i, 1);
+    }
+    for (let i = this.lightningVisuals.length - 1; i >= 0; i--) {
+      const l = this.lightningVisuals[i];
+      if (!l) continue;
+      l.lifeSec -= dt * 2;
+      if (l.lifeSec <= 0) this.lightningVisuals.splice(i, 1);
+    }
+    for (let i = this.novaVisuals.length - 1; i >= 0; i--) {
+      const n = this.novaVisuals[i];
+      if (!n) continue;
+      n.lifeSec -= dt * 1.4;
+      n.radiusPx = n.maxRadiusPx * clamp(1 - n.lifeSec / n.maxLifeSec, 0.12, 1);
+      if (n.lifeSec <= 0) this.novaVisuals.splice(i, 1);
+    }
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const pr = this.projectiles[i];
+      if (!pr) continue;
+      pr.x += pr.vx * dt * 0.45;
+      pr.y += pr.vy * dt * 0.45;
+      pr.lifeSec -= dt * 3.5;
+      if (pr.lifeSec <= 0) this.projectiles.splice(i, 1);
+    }
+
+    if (this.victoryOutroElapsedSec >= BOSS_VICTORY_OUTRO_DURATION_SEC - 1e-6) {
+      this.finalizeVictoryModal();
+    }
+  }
+
+  private finalizeVictoryModal(): void {
+    if (this.economy.victoryRewardGranted) return;
+    const canContinueEndless = this.victoryOutroCanContinueEndless;
+    const granted = calculateNormalOrVictoryCrystals(
+      this.elapsedSec,
+      this.economy,
+      true,
+      this.currentStage.clearCrystalBonus,
+      this.player.stats.crystalExtractMult,
+    );
+    this.economy.victoryRewardGranted = true;
+    this.economy.lastGrantedCrystals = granted;
+    this.economy.victoryBaselineKills = this.economy.kills;
+    this.economy.victoryBaselineElites = this.economy.elitesKilled;
+    this.economy.victoryBaselineAltars = this.economy.altarsCompleted;
+    this.economy.victoryBaselineBonusCrystals = this.economy.runBonusCrystals;
+
+    const payload: SettlementModalPayload = {
+      isVictory: true,
+      isEndlessEnd: false,
+      defeatReason: null,
+      canContinueEndless,
+      playedLevelNumber: this.currentLevel,
+      nextLevelNumber: Math.min(GAME_CONFIG.balance.maxTotalLevels, this.currentLevel + 1),
+      newlyUnlockedForm: null,
+      survivedSec: this.elapsedSec,
+      endlessSec: 0,
+      kills: this.economy.kills,
+      elitesKilled: this.economy.elitesKilled,
+      altarsCompleted: this.economy.altarsCompleted,
+      levelReached: this.player.level,
+      grantedCrystals: granted,
+    };
+    this.activeSettlementModal = payload;
+    this.pendingSettlementOutput = {
+      kind: 'victory',
+      payload,
+      newlyDiscoveredEvolutions: Array.from(this.runDiscoveredEvolutions),
+      deltaKillsToAdd: this.economy.kills,
+    };
+    this.appState = 'VICTORY_MODAL';
+    this.eventBus.emit({ type: 'RUN_VICTORY', grantedCrystals: granted, canContinueEndless });
+  }
+
   private resolveEndOfFrameArbitration(allBossesDefeatedThisFrame: boolean): void {
-    // 状态不变量兜底：无论最后一只 Boss 死于何种伤害来源，只要已满足全部 Boss 肃清条件且尚未发奖，必须立即触发通关胜利！
+    // 状态不变量兜底：无论最后一只 Boss 死于何种伤害来源，只要已满足全部 Boss 肃清条件且尚未发奖，立即切入 3 秒 Boss 死亡过渡动画！
     const allStageBossesDefeated =
       allBossesDefeatedThisFrame ||
       (this.currentStage.bossSpawnTimesSec.length > 0 &&
         this.bossesKilled >= this.currentStage.bossSpawnTimesSec.length);
 
     // 优先级 1：全 Boss 肃清同帧险胜 > 玩家死亡 / 时间上限到达
-    if (allStageBossesDefeated && !this.economy.victoryRewardGranted) {
-      this.modalQueue.length = 0;
-      const canContinueEndless = this.currentStage.enableEndlessOnVictory && this.player.hp > 0;
-      const granted = calculateNormalOrVictoryCrystals(
-        this.elapsedSec,
-        this.economy,
-        true,
-        this.currentStage.clearCrystalBonus,
-        this.player.stats.crystalExtractMult,
-      );
-      this.economy.victoryRewardGranted = true;
-      this.economy.lastGrantedCrystals = granted;
-      this.economy.victoryBaselineKills = this.economy.kills;
-      this.economy.victoryBaselineElites = this.economy.elitesKilled;
-      this.economy.victoryBaselineAltars = this.economy.altarsCompleted;
-      this.economy.victoryBaselineBonusCrystals = this.economy.runBonusCrystals;
-
-      const payload: SettlementModalPayload = {
-        isVictory: true,
-        isEndlessEnd: false,
-        defeatReason: null,
-        canContinueEndless,
-        playedLevelNumber: this.currentLevel,
-        nextLevelNumber: Math.min(GAME_CONFIG.balance.maxTotalLevels, this.currentLevel + 1),
-        newlyUnlockedForm: null,
-        survivedSec: this.elapsedSec,
-        endlessSec: 0,
-        kills: this.economy.kills,
-        elitesKilled: this.economy.elitesKilled,
-        altarsCompleted: this.economy.altarsCompleted,
-        levelReached: this.player.level,
-        grantedCrystals: granted,
-      };
-      this.activeSettlementModal = payload;
-      this.pendingSettlementOutput = {
-        kind: 'victory',
-        payload,
-        newlyDiscoveredEvolutions: Array.from(this.runDiscoveredEvolutions),
-        deltaKillsToAdd: this.economy.kills,
-      };
-      this.appState = 'VICTORY_MODAL';
-      this.eventBus.emit({ type: 'RUN_VICTORY', grantedCrystals: granted, canContinueEndless });
+    if (allStageBossesDefeated && !this.economy.victoryRewardGranted && this.appState !== 'VICTORY_OUTRO') {
+      this.beginVictoryOutro();
       return;
     }
 
@@ -2369,11 +2504,22 @@ export class SimulationWorld {
       if (e.tier === 'elite' || e.tier === 'boss') pushIfOffscreen('elite', e.x, e.y);
     }
 
+    const isOutro = this.appState === 'VICTORY_OUTRO';
     return {
-      worldTimeSec: this.elapsedSec,
+      worldTimeSec: isOutro ? this.elapsedSec + this.victoryOutroElapsedSec : this.elapsedSec,
       isEndless: this.activeRunPhase === 'RUN_ENDLESS',
       isBossActive: this.activeBossIds.length > 0,
       bossesActiveCount: this.activeBossIds.length,
+      victoryOutro: isOutro
+        ? {
+            elapsedSec: this.victoryOutroElapsedSec,
+            durationSec: BOSS_VICTORY_OUTRO_DURATION_SEC,
+            progressRatio: clamp(this.victoryOutroElapsedSec / BOSS_VICTORY_OUTRO_DURATION_SEC, 0, 1),
+            bossX: this.victoryOutroBossX,
+            bossY: this.victoryOutroBossY,
+            bossRadiusPx: this.victoryOutroBossRadiusPx,
+          }
+        : null,
       cameraTargetX: p.x,
       cameraTargetY: p.y,
       player: {
@@ -2485,6 +2631,7 @@ export class SimulationWorld {
     readonly weaponDamageStats: readonly WeaponDamageStatView[];
     readonly kills: number;
     readonly runBonusCrystals: number;
+    readonly victoryOutroProgressRatio: number | null;
   } {
     const readyIds = new Set(findReadyEvolutions(this.weapons, this.passives).map((r) => r.requiredWeaponId));
 
@@ -2587,6 +2734,10 @@ export class SimulationWorld {
       weaponDamageStats,
       kills: this.economy.kills,
       runBonusCrystals: this.economy.runBonusCrystals,
+      victoryOutroProgressRatio:
+        this.appState === 'VICTORY_OUTRO'
+          ? clamp(this.victoryOutroElapsedSec / BOSS_VICTORY_OUTRO_DURATION_SEC, 0, 1)
+          : null,
     };
   }
 

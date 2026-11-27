@@ -48,6 +48,8 @@ export class UiOverlayManager {
   private readonly bossNameEl: HTMLElement;
   private readonly bossPhaseEl: HTMLElement;
   private readonly bossFillEl: HTMLElement;
+  private readonly outroBannerEl: HTMLElement;
+  private readonly outroFillEl: HTMLElement;
   private readonly timeScaleBtnEl: HTMLButtonElement;
 
   // 脏检查缓存签名
@@ -64,6 +66,7 @@ export class UiOverlayManager {
   private lastKills = -1;
   private lastBonusCrystals = -1;
   private lastBossSignature = '';
+  private lastOutroPct = -1;
   private lastTimeScale = -1;
 
   constructor(
@@ -123,6 +126,11 @@ export class UiOverlayManager {
           <div class="boss-tick" style="left:30%"></div>
         </div>
       </div>
+      <div class="victory-outro-banner" data-testid="banner-boss-defeated">
+        <div class="victory-outro-title">✦ BOSS 已歼灭 · 区域肃清 ✦</div>
+        <div class="victory-outro-sub">战局已锁定 · 即将进入战果结算</div>
+        <div class="victory-outro-track"><div class="victory-outro-fill" data-testid="outro-progress-fill"></div></div>
+      </div>
       <div class="hud-footer-hint">WASD / 方向键走位 · 武器全自动释放 · 倒计时结束前肃清全部 Boss 即通关 · Esc 暂停速查</div>
     `;
 
@@ -148,6 +156,8 @@ export class UiOverlayManager {
     this.bossNameEl = this.hudEl.querySelector('[data-testid="hud-boss-name"]') as HTMLElement;
     this.bossPhaseEl = this.hudEl.querySelector('[data-testid="hud-boss-phase"]') as HTMLElement;
     this.bossFillEl = this.hudEl.querySelector('[data-testid="hud-boss-fill"]') as HTMLElement;
+    this.outroBannerEl = this.hudEl.querySelector('[data-testid="banner-boss-defeated"]') as HTMLElement;
+    this.outroFillEl = this.hudEl.querySelector('[data-testid="outro-progress-fill"]') as HTMLElement;
     this.timeScaleBtnEl = this.hudEl.querySelector('[data-testid="btn-hud-timescale"]') as HTMLButtonElement;
 
     this.timeScaleBtnEl.addEventListener('click', () => {
@@ -174,7 +184,8 @@ export class UiOverlayManager {
     const modalVisible =
       hud.appState !== 'RUN_NORMAL' &&
       hud.appState !== 'RUN_BOSS' &&
-      hud.appState !== 'RUN_ENDLESS';
+      hud.appState !== 'RUN_ENDLESS' &&
+      hud.appState !== 'VICTORY_OUTRO';
 
     this.modalEl.classList.toggle('visible', modalVisible);
     const isTitle = hud.appState === 'TITLE';
@@ -291,6 +302,19 @@ export class UiOverlayManager {
       } else {
         this.bossWrapEl.classList.remove('visible');
       }
+    }
+
+    const outroVisible = hud.appState === 'VICTORY_OUTRO' && hud.victoryOutroProgressRatio !== null;
+    this.outroBannerEl.classList.toggle('visible', outroVisible);
+    if (outroVisible && hud.victoryOutroProgressRatio !== null) {
+      const pct = Math.max(0, Math.min(100, Math.round(hud.victoryOutroProgressRatio * 100)));
+      if (pct !== this.lastOutroPct) {
+        this.lastOutroPct = pct;
+        this.outroFillEl.style.width = `${pct}%`;
+      }
+    } else if (this.lastOutroPct !== -1) {
+      this.lastOutroPct = -1;
+      this.outroFillEl.style.width = '0%';
     }
   }
 

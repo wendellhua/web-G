@@ -23,6 +23,7 @@ export type AppFsmState =
   | 'CHEST_MODAL'
   | 'ALTAR_MODAL'
   | 'LEVEL_UP_MODAL'
+  | 'VICTORY_OUTRO'
   | 'VICTORY_MODAL'
   | 'GAME_OVER_MODAL'
   | 'RESETTING';

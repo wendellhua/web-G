@@ -4,6 +4,13 @@
 
 Welcome to the English documentation archive for **VOID RUNNER (《黑潮突围》)**—a complete, stage-by-stage **Spec-Driven Development for Games (SDD-G)** case study.
 
+The stage specs in this folder are frozen outputs. The rules that produce them live in two Chinese documents (summarized in the [English README](../../README.en.md#-sdd-g-spec-driven-game-development-reference)):
+
+| Document | Role |
+| :--- | :--- |
+| [`CLAUDE.md`](../CLAUDE.md) | Project constitution: what each stage may and may not do, including the headless-core, save, interface, and release-gate red lines. |
+| [`SDD-G工作流提示词手册.md`](../SDD-G工作流提示词手册.md) | Nine-stage prompt handbook. Each prompt reads a matching section of `CLAUDE.md`. Stage 8 is split into L1–L5 so one session never generates the whole game. |
+
 > **Note on Living Balance Updates**: Documents `01`–`09` preserve the authentic historical SDD-G freeze artifacts from V2.0 development. Where subsequent post-launch balance or visual polish updates refined live values (such as compact `1/2/3/4/4` Boss counts, `3/5/7/9/9 min` stage timers, `-20%` evolution damage tuning, `+20%` late-game/Boss skill damage, and upgrading all 23 sprites + 26 UI icons to hard-surface painted PNGs), each affected document includes a concise **`Live Implementation Note`** pointing to the single source of truth in `src/config/gameConfig.ts` and `schemas/config.schema.ts`.
 
 | Stage | English Document | Chinese Original | Scope |

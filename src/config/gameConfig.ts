@@ -25,7 +25,7 @@ const RAW_GAME_CONFIG: GameConfigBundle = { //#region 平衡数值域
   balance: {
     basePlayerMoveSpeedPxPerSec: 150, //#初始移速
     basePlayerPickupRadiusPx: 100, //#初始拾取半径
-    basePlayerMaxHp: 100, //#初始最大生命值
+    basePlayerMaxHp: 200, //#初始最大生命值
     basePlayerInvulnDurationSec: 0.45, //#无敌时间
     baseCritChanceRatio: 0.08, //#初始暴击几率
     baseCritDamageMult: 1.50, //#初始暴击伤害倍率
@@ -43,7 +43,7 @@ const RAW_GAME_CONFIG: GameConfigBundle = { //#region 平衡数值域
     activeEnemySoftCap: 240, //#活跃敌人软上限
     activeEnemyHardCap: 320, //#活跃敌人硬上限
     activeXpGemHardCap: 320, //#活跃经验宝石硬上限
-    enemyRelocateDistancePx: 1150, //#敌人重定位距离
+    enemyRelocateDistancePx: 850, //#敌人重定位距离
     endlessMaxHpMult: 1000, //#无尽最大生命值倍率
     endlessMaxDmgMult: 20, //#无尽最大伤害倍率  
     endlessMaxSpeedMult: 1.55, //#无尽最大速度倍率

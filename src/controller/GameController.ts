@@ -455,6 +455,7 @@ export class GameController {
       maxPassiveSlots: runStage.maxPassiveSlots,
       durationLimitSec: runStage.durationLimitSec,
       isNearTimeout,
+      victoryOutroProgressRatio: partials.victoryOutroProgressRatio,
       bossProgress: partials.bossProgress,
       elapsedSec: this.world.elapsedSec,
       endlessElapsedSec: this.world.endlessElapsedSec,

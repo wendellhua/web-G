@@ -42,6 +42,7 @@ export type GameEvent =
   | { readonly type: 'BOSS_SPAWNED'; readonly enemyId: 'boss_void_weaver'; readonly x: number; readonly y: number }
   | { readonly type: 'BOSS_PHASE_CHANGED'; readonly newPhase: 2 | 3; readonly x: number; readonly y: number }
   | { readonly type: 'BOSS_IMMUNE'; readonly x: number; readonly y: number; readonly label: string }
+  | { readonly type: 'BOSS_DEATH_OUTRO_STARTED'; readonly x: number; readonly y: number; readonly radiusPx: number; readonly durationSec: number }
   | { readonly type: 'RUN_VICTORY'; readonly grantedCrystals: number; readonly canContinueEndless: boolean }
   | { readonly type: 'RUN_GAME_OVER'; readonly grantedCrystals: number; readonly isEndlessEnd: boolean };
 
@@ -177,11 +178,21 @@ export interface EdgeIndicatorView {
   readonly distancePx: number;
 }
 
+export interface RenderVictoryOutroView {
+  readonly elapsedSec: number;
+  readonly durationSec: number;
+  readonly progressRatio: number;
+  readonly bossX: number;
+  readonly bossY: number;
+  readonly bossRadiusPx: number;
+}
+
 export interface RenderSnapshot {
   readonly worldTimeSec: number;
   readonly isEndless: boolean;
   readonly isBossActive: boolean;
   readonly bossesActiveCount: number;
+  readonly victoryOutro: RenderVictoryOutroView | null;
   readonly cameraTargetX: number;
   readonly cameraTargetY: number;
   readonly player: RenderPlayerView;
@@ -397,6 +408,7 @@ export interface HudSnapshot {
   readonly maxPassiveSlots: number;
   readonly durationLimitSec: number;
   readonly isNearTimeout: boolean;
+  readonly victoryOutroProgressRatio: number | null;
   readonly bossProgress: BossProgressView;
   readonly elapsedSec: number;
   readonly endlessElapsedSec: number;

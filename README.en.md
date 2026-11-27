@@ -29,7 +29,7 @@
 **VOID RUNNER (《黑潮突围》)** is a zero-game-engine, pure browser sci-fi Bullet-Heaven / Survivors-like game engineered with **TypeScript + HTML5 Canvas 2D + Web Audio API**:
 
 - **Tight, High-Intensity Progression**: 5 progressive campaign stages across 36 escalating levels, 5 auto-awakening starfighter forms (`2+1 → 4+4` slots), 6 active weapons × 6 passive cores → 6 evolution super-weapons, multi-phase *Void Weaver* Boss encounters every 2 minutes, holographic laser warning corridors, Charging Altars, and 8 permanent meta talents with free full refunds.
-- **Flagship Open-Source SDD-G Reference**: A complete, reproducible showcase of **Spec-Driven Development for Games**—preserving every artifact from a 1-page GDD-Lite and single-file playable greybox prototype (`prototype/index.html`) to Zod-enforced data contracts, a 100% headless deterministic simulation core (`src/core/**`), 45,000-frame headless soak tests, and Playwright real-browser E2E regression suites.
+- **Flagship Open-Source SDD-G Reference**: A complete, reproducible showcase of **Spec-Driven Development for Games**—preserving every artifact from a 1-page GDD-Lite and single-file playable greybox prototype (`prototype/index.html`) to Zod-enforced data contracts, a 100% headless deterministic simulation core (`src/core/**`), 45,000-frame headless soak tests, and Playwright real-browser E2E regression suites. To rerun the pipeline, start with the constitution [`docs/CLAUDE.md`](./docs/CLAUDE.md) and the stage prompts in the [`SDD-G workflow handbook`](./docs/SDD-G工作流提示词手册.md).
 
 ---
 
@@ -174,10 +174,33 @@ flowchart LR
     S2 --> S3["Stages 3–5<br/>FSM / Arch / Zod Contracts"]
     S3 --> S4["Stages 6–7<br/>Review & Spec Freeze"]
     S4 --> S5["Stage 8<br/>Headless Core + Presentation"]
-    S5 --> S6["Stages 9–10<br/>45k Soak + E2E + Polish"]
+    S5 --> S6["Stage 9<br/>45k Soak + E2E + Polish"]
 ```
 
-### Complete Bilingual SDD-G Documentation Map
+Documents 01–09 below are the frozen artifacts of *this* game. Two Chinese rule documents still govern how to run the same pipeline again: the constitution says what each stage may do, and the handbook turns those rules into prompts you copy one stage at a time.
+
+### Constitution and prompt handbook
+
+| Document | Role | How to use it |
+| :--- | :--- | :--- |
+| [`docs/CLAUDE.md`](./docs/CLAUDE.md) | **Project constitution** | It states the hard rules for every stage. Stage 1 clarifies play and writes no code. The Stage 2 greybox stays in `prototype/` and is never imported by `src/`. Stages 3–7 do not edit production code until that work is approved. Sections 4–7 lock the engineering red lines: `src/core/` must not touch browser APIs or `Math.random()`, simulation advances at a fixed `1/60` step, config and saves are validated, presentation only reads snapshots, and release waits on `typecheck`, `lint`, `test:unit`, `test:sim`, and `test:e2e`. |
+| [`docs/SDD-G工作流提示词手册.md`](./docs/SDD-G工作流提示词手册.md) | **Nine-stage prompt handbook** | Pair it with the constitution. Every stage prompt tells the session to read the matching section of `CLAUDE.md`, then names the input documents, the artifact to freeze, and what is out of bounds. Stage 8 is five separate prompts: L1 scaffold → L2 headless core → L3 presentation → L4 UI → L5 content. Copy the next prompt only after a person signs the current artifact. |
+
+| Handbook stage | Constitution section | Artifact that stage freezes |
+| :--- | :--- | :--- |
+| 1 Concept and rules | §1 | [`docs/01`](./docs/01.游戏设计规格书%28GDD-Lite%29.md) GDD-Lite |
+| 2 Greybox | §2 | [`prototype/`](./prototype/index.html) + [`docs/02`](./docs/02.灰盒原型验证结论.md) |
+| 3 Modules and FSM | §3 | [`docs/03`](./docs/03.系统模块与状态流转设计.md) |
+| 4 Runtime architecture | §4 | [`docs/04`](./docs/04.技术选型与运行时架构设计.md) |
+| 5 Data and saves | §5 | [`docs/05`](./docs/05.数据模型与配置表设计.md) + `schemas/` |
+| 6 Interfaces and AV | §6 | [`docs/06`](./docs/06.模块接口与资源视听规范.md) |
+| 7 Review and freeze | §3, plus a cross-document audit | [`docs/07`](./docs/07.设计方案评审与冻结报告.md), including the L1–L5 task topology |
+| 8 Layered implementation | §§4–7 | `src/`, delivered L1→L5; each layer passes `typecheck` + `lint` + `test:unit` |
+| 9 Soak, E2E, and tuning | §7.3 | `tests/simulation/`, `tests/e2e/` + [`docs/08`](./docs/08.质量验收与调优报告.md) |
+
+The [art bible (`docs/09`)](./docs/09.美术风格圣经与资产清单规范.md) was written after the freeze to lock visuals and the asset manifest. It is not a separate coding stage in the handbook. Stages 8 and 9 produce code and tests directly, so they do not add another design volume with the same name.
+
+### Complete bilingual SDD-G documentation map
 
 | Stage / Topic | English Version | Chinese Original (中文原版) | Description |
 | :--- | :--- | :--- | :--- |

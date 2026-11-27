@@ -2,10 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { GAME_CONFIG } from '../../src/config/gameConfig';
 import { GameController } from '../../src/controller/GameController';
 import {
+  BOSS_VICTORY_OUTRO_DURATION_SEC,
   FIXED_DT_SEC,
   SimulationWorld,
   computePostFirstBossBonusEliteCount,
 } from '../../src/core/engine/SimulationWorld';
+
+function stepThroughVictoryOutro(ctrl: GameController): void {
+  const totalFrames = Math.ceil(BOSS_VICTORY_OUTRO_DURATION_SEC / FIXED_DT_SEC) + 2;
+  for (let i = 0; i < totalFrames; i++) {
+    if (ctrl.getHudSnapshot().appState !== 'VICTORY_OUTRO') break;
+    ctrl.step(FIXED_DT_SEC, { moveX: 1, moveY: 0 });
+  }
+}
 import {
   calculateEndlessDeltaCrystals,
   calculateNormalOrVictoryCrystals,
@@ -66,7 +75,8 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     expect(ctrl.getHudSnapshot().weaponSlots[0]?.level).toBe(1);
 
     ctrl.world.debugKillAllStageBosses();
-    ctrl.debugFlushSettlement();
+    expect(ctrl.getHudSnapshot().appState).toBe('VICTORY_OUTRO');
+    stepThroughVictoryOutro(ctrl);
 
     const afterVictory = ctrl.getHudSnapshot();
     expect(afterVictory.appState).toBe('VICTORY_MODAL');
@@ -92,7 +102,8 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     ctrl.debugSetClearedLevels(25); // 阶段 5 第 26 关
     ctrl.startRun(555);
     ctrl.world.debugTriggerSameFrameMutualKill();
-    ctrl.debugFlushSettlement();
+    expect(ctrl.getHudSnapshot().appState).toBe('VICTORY_OUTRO');
+    stepThroughVictoryOutro(ctrl);
 
     const hud = ctrl.getHudSnapshot();
     expect(hud.appState).toBe('VICTORY_MODAL');
@@ -112,7 +123,8 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     expect(ctrl.getHudSnapshot().bossProgress.total).toBe(4);
 
     ctrl.world.debugKillAllStageBosses();
-    ctrl.debugFlushSettlement();
+    expect(ctrl.getHudSnapshot().appState).toBe('VICTORY_OUTRO');
+    stepThroughVictoryOutro(ctrl);
 
     const afterVictory = ctrl.getHudSnapshot();
     expect(afterVictory.appState).toBe('VICTORY_MODAL');
@@ -241,18 +253,41 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     expect(events.some((e) => e.type === 'BOSS_IMMUNE')).toBe(true);
   });
 
-  it('机制修复校验：即便 Boss 死于奇点坍缩等延迟/非弹幕来源，满足全 Boss 肃清条件也当帧立即触发 VICTORY_MODAL', () => {
+  it('机制修复校验：即便 Boss 死于奇点坍缩等延迟/非弹幕来源，满足全 Boss 肃清条件也当帧立即切入 3 秒 Boss 死亡过渡并在 3 秒后触发 VICTORY_MODAL', () => {
     const ctrl = new GameController(new SaveManager(new InMemoryStorage()));
     ctrl.startRun(789);
     ctrl.world.debugJumpToNextBoss();
     expect(ctrl.getHudSnapshot().appState).toBe('RUN_BOSS');
 
+    const pxBefore = ctrl.world.player.x;
+    const pyBefore = ctrl.world.player.y;
+    ctrl.world.clearFrameEvents();
     ctrl.world.debugKillBossViaDelayedCollapse();
-    ctrl.debugFlushSettlement();
+    const elapsedAtOutroStart = ctrl.world.elapsedSec;
+
+    // 当帧立即进入 3 秒过渡动画并派发死亡演出事件，不立刻弹出胜利弹窗
+    const midHud = ctrl.getHudSnapshot();
+    expect(midHud.bossProgress.killed).toBe(1);
+    expect(midHud.bossProgress.total).toBe(1);
+    expect(midHud.appState).toBe('VICTORY_OUTRO');
+    expect(ctrl.getFrameEvents().some((e) => e.type === 'BOSS_DEATH_OUTRO_STARTED')).toBe(true);
+    expect(ctrl.getRenderSnapshot().victoryOutro?.durationSec).toBe(3.0);
+
+    // 推进 2.9 秒（174 帧），即使持续输入移动指令，主角也原地停下、计时冻结且尚未弹出结算弹窗
+    for (let i = 0; i < 174; i++) {
+      ctrl.step(FIXED_DT_SEC, { moveX: 1, moveY: 0.5 });
+    }
+    expect(ctrl.getHudSnapshot().appState).toBe('VICTORY_OUTRO');
+    expect(ctrl.world.player.x).toBe(pxBefore);
+    expect(ctrl.world.player.y).toBe(pyBefore);
+    expect(ctrl.world.elapsedSec).toBe(elapsedAtOutroStart);
+
+    // 再推进剩余 0.1 秒（6 帧）抵达 3.0 秒整，顺利弹出 VICTORY_MODAL 并推进关卡
+    for (let i = 0; i < 6; i++) {
+      ctrl.step(FIXED_DT_SEC, { moveX: 1, moveY: 0.5 });
+    }
 
     const hud = ctrl.getHudSnapshot();
-    expect(hud.bossProgress.killed).toBe(1);
-    expect(hud.bossProgress.total).toBe(1);
     expect(hud.appState).toBe('VICTORY_MODAL');
     expect(hud.meta.career.currentLevel).toBe(2);
   });
@@ -392,7 +427,8 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
 
       return {
         deltaAfterFirst: elitesAfterFirst - elitesBeforeFirst,
-        deltaAfterSecond: elitesAfterSecond - elitesBeforeSecond,
+        // 若第 2 只 Boss 为本阶段最后一只（阶段 2），击杀后会触发胜利清场使残余精英归零，因此新增量必 <= 0
+        deltaAfterSecond: Math.max(0, elitesAfterSecond - elitesBeforeSecond),
         prismCount,
       };
     };
@@ -592,7 +628,8 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     expect(capCtrl.getHudSnapshot().meta.career.currentLevel).toBe(36);
     capCtrl.startRun(3636);
     capCtrl.world.debugKillAllStageBosses();
-    capCtrl.debugFlushSettlement();
+    expect(capCtrl.getHudSnapshot().appState).toBe('VICTORY_OUTRO');
+    stepThroughVictoryOutro(capCtrl);
 
     const cleared36Hud = capCtrl.getHudSnapshot();
     expect(cleared36Hud.appState).toBe('VICTORY_MODAL');

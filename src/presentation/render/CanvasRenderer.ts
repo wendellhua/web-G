@@ -138,6 +138,29 @@ export class CanvasRenderer {
   private dashGhostCursor = 0;
   private dashGhostSampleAccumSec = 0;
   private prevCircleTelegraphs: PrevCircleTelegraph[] = [];
+  private outroChainAccumSec = 0;
+  private outroSupernovaFired = false;
+  private outroWasActive = false;
+  private readonly midBossDeaths: Array<{
+    active: boolean;
+    x: number;
+    y: number;
+    radiusPx: number;
+    elapsedSec: number;
+    durationSec: number;
+    chainAccumSec: number;
+    shatterFired: boolean;
+  }> = Array.from({ length: 4 }, () => ({
+    active: false,
+    x: 0,
+    y: 0,
+    radiusPx: 56,
+    elapsedSec: 0,
+    durationSec: 1.1,
+    chainAccumSec: 0,
+    shatterFired: false,
+  }));
+  private midBossDeathCursor = 0;
   private vfxSeed = 1337;
 
   private readonly particles: Particle[] = Array.from({ length: MAX_PARTICLES }, () => ({
@@ -288,6 +311,10 @@ export class CanvasRenderer {
     for (const dg of this.dashGhosts) dg.active = false;
     this.dashGhostSampleAccumSec = 0;
     this.prevCircleTelegraphs.length = 0;
+    this.outroChainAccumSec = 0;
+    this.outroSupernovaFired = false;
+    this.outroWasActive = false;
+    for (const mb of this.midBossDeaths) mb.active = false;
   }
 
   private nextVfxRand(): number {
@@ -331,6 +358,24 @@ export class CanvasRenderer {
         case 'ENEMY_KILLED': {
           const baseCount = ev.tier === 'boss' ? 60 : ev.tier === 'elite' ? 30 : ev.enemyId === 'tank' ? 15 : 8;
           this.spawnParticles(ev.x, ev.y, ev.colorHex, lowPerf ? Math.max(2, Math.round(baseCount * 0.3)) : baseCount);
+          if (ev.tier === 'boss') {
+            // 若同帧紧随 BOSS_DEATH_OUTRO_STARTED，则由 3 秒终局 Boss 死亡演出接管；否则为中途 Boss 播放 1.1 秒爆裂动画
+            const hasOutroInBatch = events.some((other) => other && other.type === 'BOSS_DEATH_OUTRO_STARTED');
+            if (!hasOutroInBatch) {
+              const slot = this.midBossDeaths[this.midBossDeathCursor % this.midBossDeaths.length];
+              this.midBossDeathCursor = (this.midBossDeathCursor + 1) % this.midBossDeaths.length;
+              if (slot) {
+                slot.active = true;
+                slot.x = ev.x;
+                slot.y = ev.y;
+                slot.radiusPx = 56;
+                slot.elapsedSec = 0;
+                slot.durationSec = 1.1;
+                slot.chainAccumSec = 0;
+                slot.shatterFired = false;
+              }
+            }
+          }
           if (!lowPerf) {
             if (ev.tier === 'boss') {
               this.spawnShockRing(ev.x, ev.y, 220, '#FACC15', 0.58, 5.5);
@@ -404,6 +449,21 @@ export class CanvasRenderer {
         case 'BOSS_IMMUNE': {
           this.spawnText(ev.x, ev.y - 42, ev.label, '#C084FC', 1.24, true);
           this.spawnParticles(ev.x, ev.y, '#C084FC', lowPerf ? 3 : 10);
+          break;
+        }
+        case 'BOSS_DEATH_OUTRO_STARTED': {
+          this.outroChainAccumSec = 0;
+          this.outroSupernovaFired = false;
+          this.outroWasActive = true;
+          if (!this.settings.disableScreenShake) {
+            this.shakeMagPx = Math.max(this.shakeMagPx, 14);
+            this.triggerScreenFlash('254, 240, 138', 0.2);
+          }
+          if (!lowPerf) {
+            this.spawnShockRing(ev.x, ev.y, 260, '#FACC15', 0.65, 5.5);
+            this.spawnShockRing(ev.x, ev.y, 180, '#FF1E56', 0.48, 4.0);
+            this.spawnImpactFlash(ev.x, ev.y, 105, '#FEF08A', 0.32);
+          }
           break;
         }
         default:
@@ -543,11 +603,21 @@ export class CanvasRenderer {
       const offsetRatio = Math.min(1, speed / 260);
       const dirX = speed > 5 ? this.playerVelX / speed : 0;
       const dirY = speed > 5 ? this.playerVelY / speed : 0;
-      const desiredCamX = snap.cameraTargetX - dirX * 36 * offsetRatio;
-      const desiredCamY = snap.cameraTargetY - dirY * 26 * offsetRatio;
+      let desiredCamX = snap.cameraTargetX - dirX * 36 * offsetRatio;
+      let desiredCamY = snap.cameraTargetY - dirY * 26 * offsetRatio;
 
-      this.camX += (desiredCamX - this.camX) * Math.min(1, dt * 6.5);
-      this.camY += (desiredCamY - this.camY) * Math.min(1, dt * 6.5);
+      // Boss 死亡 3 秒过渡演出期间：先将镜头柔和拉向主角与 Boss 爆炸点的黄金中点，2.25 秒后平稳回归静止的主角飞船
+      if (snap.victoryOutro) {
+        const vo = snap.victoryOutro;
+        const focusWeight = vo.elapsedSec < 2.25 ? 0.48 : Math.max(0, 0.48 * (1 - (vo.elapsedSec - 2.25) / 0.75));
+        const rawOffX = (vo.bossX - snap.cameraTargetX) * focusWeight;
+        const rawOffY = (vo.bossY - snap.cameraTargetY) * focusWeight;
+        desiredCamX = snap.cameraTargetX + Math.max(-260, Math.min(260, rawOffX));
+        desiredCamY = snap.cameraTargetY + Math.max(-145, Math.min(145, rawOffY));
+      }
+
+      this.camX += (desiredCamX - this.camX) * Math.min(1, dt * (snap.victoryOutro ? 4.2 : 6.5));
+      this.camY += (desiredCamY - this.camY) * Math.min(1, dt * (snap.victoryOutro ? 4.2 : 6.5));
 
       // 更新玩家世界坐标飞行轨迹光带
       for (let i = this.playerTrail.length - 1; i >= 0; i--) {
@@ -645,18 +715,22 @@ export class CanvasRenderer {
     // 4. 经验宝石
     this.drawXpGems(snap, minX, maxX, minY, maxY);
 
-    // 5. Boss/精英高速冲锋残影 + 敌怪与 Boss 主体
+    // 5. Boss/精英高速冲锋残影 + 敌怪与 Boss 主体 + Boss 死亡演出动画
     this.stepAndDrawDashGhosts(snap, dt);
     this.drawEnemies(snap, minX, maxX, minY, maxY);
+    this.stepAndDrawBossDeathCinematics(snap, dt);
 
     // 6. 我方弹幕、环绕相位刃与敌方炽橙弹幕
     this.drawPlayerProjectiles(snap, minX, maxX, minY, maxY);
     this.drawOrbitalBlades(snap);
     this.drawEnemyBullets(snap, minX, maxX, minY, maxY);
 
-    // 7. 主角飞行轨迹双离子光带 + 主角机甲
+    // 7. 主角飞行轨迹双离子光带 + 主角机甲 + 胜利释放光环
     this.drawPlayerTrajectoryTrail(snap);
     this.drawPlayer(snap);
+    if (snap.victoryOutro) {
+      this.drawVictoryPlayerAura(snap);
+    }
 
     // 8. 粒子池与伤害飘字池
     this.stepAndDrawParticles(dt);
@@ -2981,5 +3055,319 @@ export class CanvasRenderer {
       ctx.fillText(tagText, ax, ay + 27);
       ctx.restore();
     }
+  }
+
+  /** 绘制 Boss 死亡演出动画：兼顾中途 Boss（1.1s 过载爆裂）与终局 Boss（3.0s 四幕超新星瓦解演出） */
+  private stepAndDrawBossDeathCinematics(snap: RenderSnapshot, dt: number): void {
+    const low = this.settings.lowParticleMode;
+
+    // A. 中途 Boss 击杀的 1.1 秒过载爆裂动画（不暂停战斗节奏）
+    for (let i = 0; i < this.midBossDeaths.length; i++) {
+      const mb = this.midBossDeaths[i];
+      if (!mb || !mb.active) continue;
+      mb.elapsedSec += dt;
+      if (mb.elapsedSec >= mb.durationSec) {
+        mb.active = false;
+        continue;
+      }
+
+      if (mb.elapsedSec < 0.72) {
+        const overloadRatio = Math.min(1, mb.elapsedSec / 0.5);
+        const implodeRatio = mb.elapsedSec > 0.5 ? Math.min(1, (mb.elapsedSec - 0.5) / 0.22) : 0;
+        this.drawBossOverloadHull(mb.x, mb.y, mb.radiusPx, overloadRatio, implodeRatio, snap.worldTimeSec, low);
+
+        mb.chainAccumSec += dt;
+        if (mb.chainAccumSec >= 0.14) {
+          mb.chainAccumSec = 0;
+          const ox = (this.nextVfxRand() - 0.5) * mb.radiusPx * 2.2;
+          const oy = (this.nextVfxRand() - 0.5) * mb.radiusPx * 2.2;
+          if (!low) {
+            this.spawnImpactFlash(mb.x + ox, mb.y + oy, 46, '#FEF08A', 0.2);
+            this.spawnShockRing(mb.x + ox, mb.y + oy, 78, '#FF1E56', 0.3, 3.0);
+          }
+          this.spawnParticles(mb.x + ox, mb.y + oy, '#FACC15', low ? 3 : 10);
+        }
+      } else if (!mb.shatterFired) {
+        mb.shatterFired = true;
+        if (!this.settings.disableScreenShake) {
+          this.shakeMagPx = Math.max(this.shakeMagPx, 13);
+          this.triggerScreenFlash('254, 240, 138', 0.18);
+        }
+        if (!low) {
+          this.spawnShockRing(mb.x, mb.y, 260, '#FEF08A', 0.52, 5.2);
+          this.spawnShockRing(mb.x, mb.y, 185, '#FF1E56', 0.42, 4.0);
+          this.spawnImpactFlash(mb.x, mb.y, 120, '#FFFFFF', 0.3);
+        }
+        this.spawnParticles(mb.x, mb.y, '#FEF08A', low ? 10 : 34);
+        this.spawnParticles(mb.x, mb.y, '#FF1E56', low ? 6 : 22);
+      }
+    }
+
+    // B. 终局 Boss 击杀的完整 3.0 秒四幕式死亡演出（0–1.25s 连锁过载 → 1.25–1.65s 奇点内爆 → 1.65–2.25s 超新星绽放 → 2.25–3.0s 余烬归宁）
+    const vo = snap.victoryOutro;
+    if (!vo) {
+      if (this.outroWasActive) {
+        this.outroWasActive = false;
+        this.outroSupernovaFired = false;
+        this.outroChainAccumSec = 0;
+      }
+      return;
+    }
+
+    if (!this.outroWasActive) {
+      this.outroWasActive = true;
+      this.outroSupernovaFired = false;
+      this.outroChainAccumSec = 0;
+    }
+
+    const t = vo.elapsedSec;
+    const bx = vo.bossX;
+    const by = vo.bossY;
+    const br = vo.bossRadiusPx;
+
+    if (t < 1.65) {
+      const overloadRatio = Math.min(1, t / 1.25);
+      const implodeRatio = t > 1.25 ? Math.min(1, (t - 1.25) / 0.4) : 0;
+      this.drawBossOverloadHull(bx, by, br, overloadRatio, implodeRatio, snap.worldTimeSec, low);
+
+      // 第一幕（0.00s – 1.25s）：舰体高频连锁殉爆（每 0.13s 随机点位闪爆 + 微震）
+      if (t < 1.25) {
+        this.outroChainAccumSec += dt;
+        if (this.outroChainAccumSec >= 0.13) {
+          this.outroChainAccumSec = 0;
+          const ang = this.nextVfxRand() * Math.PI * 2;
+          const dist = (0.2 + this.nextVfxRand() * 1.15) * br;
+          const ex = bx + Math.cos(ang) * dist;
+          const ey = by + Math.sin(ang) * dist;
+          const goldBlast = this.nextVfxRand() > 0.4;
+          if (!low) {
+            this.spawnImpactFlash(ex, ey, 42 + overloadRatio * 34, goldBlast ? '#FEF08A' : '#FF4D6D', 0.22);
+            this.spawnShockRing(ex, ey, 72 + overloadRatio * 65, goldBlast ? '#FACC15' : '#FF1E56', 0.34, 3.2);
+          }
+          this.spawnParticles(ex, ey, goldBlast ? '#FEF08A' : '#FF1E56', low ? 4 : 12);
+          if (!this.settings.disableScreenShake) {
+            this.shakeMagPx = Math.max(this.shakeMagPx, 5.5 + overloadRatio * 5.5);
+          }
+        }
+      }
+    } else {
+      // 第三幕引爆瞬间（t >= 1.65s）：超新星终极瓦解冲击波（仅触发一次）
+      if (!this.outroSupernovaFired) {
+        this.outroSupernovaFired = true;
+        if (!this.settings.disableScreenShake) {
+          this.shakeMagPx = Math.max(this.shakeMagPx, 18);
+          this.triggerScreenFlash('254, 240, 138', 0.36);
+        }
+        if (!low) {
+          this.spawnShockRing(bx, by, 420, '#FEF08A', 0.92, 6.5);
+          this.spawnShockRing(bx, by, 310, '#FF1E56', 0.72, 4.8);
+          this.spawnShockRing(bx, by, 215, '#38BDF8', 0.58, 3.6);
+          this.spawnImpactFlash(bx, by, 175, '#FFFFFF', 0.45);
+        }
+        this.spawnParticles(bx, by, '#FEF08A', low ? 14 : 36);
+        this.spawnParticles(bx, by, '#FACC15', low ? 10 : 26);
+        this.spawnParticles(bx, by, '#FF1E56', low ? 8 : 20);
+        this.spawnParticles(bx, by, '#38BDF8', low ? 6 : 16);
+      }
+
+      // 第三～四幕余辉：8 向旋转圣光射线 + 缓慢消散的金耀星云残核
+      const afterSec = t - 1.65;
+      const rayAlpha = Math.max(0, 1 - afterSec / 0.95);
+      if (rayAlpha > 0.01) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(bx, by);
+        if (!low) ctx.globalCompositeOperation = 'lighter';
+
+        const coreGlowR = br * (1.6 + afterSec * 3.2);
+        const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, coreGlowR);
+        cg.addColorStop(0, `rgba(255, 255, 255, ${(rayAlpha * 0.85).toFixed(3)})`);
+        cg.addColorStop(0.28, `rgba(254, 240, 138, ${(rayAlpha * 0.56).toFixed(3)})`);
+        cg.addColorStop(0.62, `rgba(255, 46, 99, ${(rayAlpha * 0.22).toFixed(3)})`);
+        cg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.arc(0, 0, coreGlowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (!low) {
+          ctx.rotate(afterSec * 0.55);
+          const rayLen = br * (2.6 + afterSec * 4.4);
+          for (let k = 0; k < 8; k++) {
+            ctx.save();
+            ctx.rotate((k * Math.PI) / 4);
+            const w = (k % 2 === 0 ? 18 : 10) * rayAlpha;
+            const rg = ctx.createLinearGradient(0, 0, rayLen, 0);
+            rg.addColorStop(0, `rgba(255, 255, 255, ${(rayAlpha * 0.72).toFixed(3)})`);
+            rg.addColorStop(0.42, `rgba(250, 204, 21, ${(rayAlpha * 0.36).toFixed(3)})`);
+            rg.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            ctx.fillStyle = rg;
+            ctx.beginPath();
+            ctx.moveTo(0, -w * 0.45);
+            ctx.lineTo(rayLen, 0);
+            ctx.lineTo(0, w * 0.45);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  /** 绘制正在剧烈震颤、裂解与奇点坍缩的 Boss 残骸本体 */
+  private drawBossOverloadHull(
+    x: number,
+    y: number,
+    radiusPx: number,
+    overloadRatio: number,
+    implodeRatio: number,
+    nowSec: number,
+    low: boolean,
+  ): void {
+    const ctx = this.ctx;
+    const jitterAmp = (2.5 + overloadRatio * 9.5) * (1 - implodeRatio * 0.45);
+    const jx = (this.nextVfxRand() - 0.5) * 2 * jitterAmp;
+    const jy = (this.nextVfxRand() - 0.5) * 2 * jitterAmp;
+    const drawSize = radiusPx * 4.25;
+    const half = drawSize / 2;
+    const scale = Math.max(0.38, 1 + overloadRatio * 0.06 - implodeRatio * 0.58);
+    const wobbleRot = Math.sin(nowSec * 22) * (0.04 + overloadRatio * 0.14) + implodeRatio * 0.85;
+
+    ctx.save();
+    ctx.translate(x + jx, y + jy);
+
+    // 底部过载裂变光晕
+    if (!low) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const glowR = radiusPx * (2.5 + overloadRatio * 0.8 - implodeRatio * 0.7);
+      const glow = ctx.createRadialGradient(0, 0, radiusPx * 0.2, 0, 0, glowR);
+      glow.addColorStop(0, `rgba(254, 240, 138, ${(0.35 + overloadRatio * 0.35 + implodeRatio * 0.25).toFixed(3)})`);
+      glow.addColorStop(0.55, `rgba(255, 30, 86, ${(0.24 + overloadRatio * 0.18).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, glowR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 舰体主体 + 炽白/金高频频闪过载剪影
+    ctx.save();
+    ctx.rotate(wobbleRot);
+    ctx.scale(scale, scale);
+    const cached = this.sprites.get('boss_void_weaver');
+    if (cached) {
+      ctx.drawImage(cached.normal, -half, -half, drawSize, drawSize);
+      const flashStrobe = 0.25 + 0.75 * Math.abs(Math.sin(nowSec * (18 + overloadRatio * 24)));
+      const whiteAlpha = Math.min(1, implodeRatio * 0.85 + overloadRatio * flashStrobe * 0.72);
+      if (cached.whiteFlash && whiteAlpha > 0.05) {
+        ctx.globalAlpha = whiteAlpha;
+        ctx.drawImage(cached.whiteFlash, -half, -half, drawSize, drawSize);
+        ctx.globalAlpha = 1;
+      }
+    } else {
+      ctx.fillStyle = implodeRatio > 0 ? '#FEF08A' : '#FF1E56';
+      ctx.beginPath();
+      ctx.arc(0, 0, radiusPx, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 6 道由核心向外撕裂的高温等离子裂缝线
+    if (!low) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      const crackLen = half * (0.28 + overloadRatio * 0.68);
+      for (let k = 0; k < 6; k++) {
+        const baseAng = (k * Math.PI) / 3 + 0.22;
+        const midAng = baseAng + (k % 2 === 0 ? 0.18 : -0.18);
+        const mx = Math.cos(midAng) * crackLen * 0.52;
+        const my = Math.sin(midAng) * crackLen * 0.52;
+        const ex = Math.cos(baseAng) * crackLen;
+        const ey = Math.sin(baseAng) * crackLen;
+        ctx.strokeStyle = `rgba(255, 46, 99, ${(0.55 + overloadRatio * 0.35).toFixed(3)})`;
+        ctx.lineWidth = 4.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(mx, my);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.7 + overloadRatio * 0.3).toFixed(3)})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(mx, my);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 第二幕奇点内爆：12 道高能光丝向核心急速坍缩 + 炽白恒星核暴涨
+    if (implodeRatio > 0) {
+      ctx.save();
+      if (!low) ctx.globalCompositeOperation = 'lighter';
+      const outerR = radiusPx * (2.6 - implodeRatio * 1.9);
+      const innerR = Math.max(4, radiusPx * (0.65 - implodeRatio * 0.58));
+      for (let k = 0; k < 12; k++) {
+        const a = (k * Math.PI) / 6 + implodeRatio * 2.2;
+        ctx.strokeStyle = k % 2 === 0 ? 'rgba(254, 240, 138, 0.88)' : 'rgba(217, 70, 239, 0.82)';
+        ctx.lineWidth = 2.0 + implodeRatio * 1.4;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * outerR, Math.sin(a) * outerR);
+        ctx.lineTo(Math.cos(a + 0.25) * innerR, Math.sin(a + 0.25) * innerR);
+        ctx.stroke();
+      }
+
+      const starR = radiusPx * (0.28 + implodeRatio * 0.92);
+      const sg = ctx.createRadialGradient(0, 0, 1, 0, 0, starR);
+      sg.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      sg.addColorStop(0.42, 'rgba(254, 240, 138, 0.9)');
+      sg.addColorStop(1, 'rgba(255, 30, 86, 0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(0, 0, starR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  /** 第三～四幕：主角飞船停驻深空，周身展开温和的金青色胜利共鸣光环 */
+  private drawVictoryPlayerAura(snap: RenderSnapshot): void {
+    const vo = snap.victoryOutro;
+    if (!vo || vo.elapsedSec < 1.55) return;
+    const p = snap.player;
+    const calmRatio = Math.min(1, (vo.elapsedSec - 1.55) / 0.85);
+    const pulse = 0.85 + 0.15 * Math.sin(snap.worldTimeSec * 4.5);
+    const ringR = p.radiusPx * (1.85 + calmRatio * 0.95) * pulse;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (!this.settings.lowParticleMode) ctx.globalCompositeOperation = 'lighter';
+
+    const halo = ctx.createRadialGradient(0, 0, p.radiusPx * 0.4, 0, 0, ringR * 1.35);
+    halo.addColorStop(0, `rgba(250, 204, 21, ${(0.22 * calmRatio).toFixed(3)})`);
+    halo.addColorStop(0.6, `rgba(56, 189, 248, ${(0.14 * calmRatio).toFixed(3)})`);
+    halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(0, 0, ringR * 1.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(254, 240, 138, ${(0.55 * calmRatio).toFixed(3)})`;
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.arc(0, 0, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
   }
 }

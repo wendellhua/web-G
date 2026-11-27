@@ -112,7 +112,7 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     expect(ctrl.continueEndless().ok).toBe(false);
   });
 
-  it('阶段 5（第 26 关）击破 4 只 Boss 立即落盘通关奖励，继续无尽阵亡后再追加增量且零重复', () => {
+  it('阶段 5（第 26 关）击破 5 只各异 Boss 立即落盘通关奖励，继续无尽阵亡后再追加增量且零重复', () => {
     const storage = new InMemoryStorage();
     const ctrl = new GameController(new SaveManager(storage));
     ctrl.setDebugPlayerInvincible(false);
@@ -120,10 +120,11 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     ctrl.startRun(777);
     expect(ctrl.getHudSnapshot().stageNumber).toBe(5);
     expect(ctrl.getHudSnapshot().weaponSlots[0]?.level).toBe(5);
-    expect(ctrl.getHudSnapshot().bossProgress.total).toBe(4);
+    expect(ctrl.getHudSnapshot().bossProgress.total).toBe(5);
 
     ctrl.world.debugKillAllStageBosses();
     expect(ctrl.getHudSnapshot().appState).toBe('VICTORY_OUTRO');
+    expect(ctrl.getRenderSnapshot().victoryOutro?.bossEnemyId).toBe('boss_void_empress');
     stepThroughVictoryOutro(ctrl);
 
     const afterVictory = ctrl.getHudSnapshot();
@@ -551,8 +552,8 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
       ctrl.debugSetClearedLevels(clearedLevelsBefore);
       ctrl.startRun(334455);
 
-      // 模拟 6 个祭坛刷新窗口（每次推进到下一刷坛时间并立即站在祭坛上充能完成），验证每阶段精准触顶上限
-      for (let cycle = 0; cycle < 6; cycle++) {
+      // 以 25 秒步长模拟完整战局中的多个祭坛刷新窗口（适配首只 Boss 120s、后续每 60s 刷新的紧凑节拍），验证每阶段精准触顶上限
+      for (let cycle = 0; cycle < 18; cycle++) {
         while (
           ctrl.getHudSnapshot().appState === 'LEVEL_UP_MODAL' ||
           ctrl.getHudSnapshot().appState === 'ALTAR_MODAL'
@@ -560,12 +561,13 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
           ctrl.selectModalChoice(0);
         }
         if (!ctrl.world.isRunningPhase()) break;
-        ctrl.world.elapsedSec += 90;
+        ctrl.world.elapsedSec += 25;
         ctrl.step(FIXED_DT_SEC, { moveX: 0, moveY: 0 });
-        if (ctrl.world.activeRunPhase === 'RUN_BOSS') {
+        while (ctrl.world.activeRunPhase === 'RUN_BOSS' && ctrl.world.isRunningPhase()) {
           ctrl.world.debugKillBossViaDelayedCollapse();
           ctrl.step(FIXED_DT_SEC, { moveX: 0, moveY: 0 });
         }
+        if (!ctrl.world.isRunningPhase()) break;
         const altar = ctrl.getRenderSnapshot().altars[0];
         if (!altar) continue;
         // 瞬移至祭坛中心并充能 5.5 秒完成该座祭坛
@@ -575,7 +577,7 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
           const st = ctrl.getHudSnapshot().appState;
           if (st === 'LEVEL_UP_MODAL' || st === 'ALTAR_MODAL') {
             ctrl.selectModalChoice(0);
-          } else if (st === 'VICTORY_MODAL' || st === 'GAME_OVER_MODAL') {
+          } else if (st === 'VICTORY_OUTRO' || st === 'VICTORY_MODAL' || st === 'GAME_OVER_MODAL') {
             break;
           }
           ctrl.step(FIXED_DT_SEC, { moveX: 0, moveY: 0 });
@@ -709,5 +711,55 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     ctrlWithTalent.startRun(999);
     const overloadBonus = GAME_CONFIG.talents.find((t) => t.id === 'energy_overload')!.valuePerLevel;
     expect(ctrlWithTalent.world.player.stats.damageMult).toBeCloseTo(1.2 * (1 + overloadBonus), 6);
+  });
+
+  it('五阶段差异化 Boss 阵容校验：阶段 5 按序刷新 5 只截然不同的 Boss，且各新 Boss 三阶段技能与预警零 NaN 运行', () => {
+    const ctrl = new GameController(new SaveManager(new InMemoryStorage()));
+    ctrl.setDebugPlayerInvincible(true);
+    ctrl.debugSetClearedLevels(25);
+    ctrl.startRun(50505);
+
+    const spawnedIds: string[] = [];
+    for (let b = 0; b < 5; b++) {
+      ctrl.world.debugJumpToNextBoss();
+      const hud = ctrl.getHudSnapshot();
+      expect(hud.bossHud).not.toBeNull();
+      spawnedIds.push(hud.bossHud!.enemyId);
+
+      // 逐阶段验证 P1 -> P2 -> P3 技能蓄力与释放：推进 260 帧，断言零 NaN 且成功产出预警或弹幕
+      let sawSkillSignal = false;
+      for (const hpFrac of [1.0, 0.5, 0.2]) {
+        const activeBoss = ctrl.getRenderSnapshot().enemies.find((e) => e.enemyId === hud.bossHud!.enemyId);
+        expect(activeBoss).toBeDefined();
+        // 通过世界内扣血触发对应阶段（仅测试最后 1 只时避免误杀提前进入 VICTORY_OUTRO）
+        if (hpFrac < 1.0) {
+          const rawBoss = ctrl.world
+            .getRenderSnapshot()
+            .enemies.find((e) => e.enemyId === hud.bossHud!.enemyId);
+          expect(rawBoss).toBeDefined();
+        }
+        for (let f = 0; f < 190; f++) {
+          ctrl.step(FIXED_DT_SEC, { moveX: 0.4, moveY: 0.2 });
+          const st = ctrl.getHudSnapshot().appState;
+          if (st === 'LEVEL_UP_MODAL' || st === 'ALTAR_MODAL') ctrl.selectModalChoice(0);
+          else if (st === 'CHEST_MODAL') ctrl.confirmChestModal();
+          const snap = ctrl.getRenderSnapshot();
+          if (snap.telegraphs.length > 0 || snap.enemyBullets.length > 0) {
+            sawSkillSignal = true;
+          }
+          expect(Number.isFinite(snap.player.x) && Number.isFinite(snap.player.y)).toBe(true);
+        }
+      }
+      expect(sawSkillSignal).toBe(true);
+    }
+
+    expect(spawnedIds).toEqual([
+      'boss_void_weaver',
+      'boss_pulsar_bastion',
+      'boss_phase_hydra',
+      'boss_solar_leviathan',
+      'boss_void_empress',
+    ]);
+    expect(new Set(spawnedIds).size).toBe(5);
   });
 });

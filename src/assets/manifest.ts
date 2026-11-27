@@ -20,6 +20,10 @@ export const PROCEDURAL_ASSET_IDS = [
   'proc_elite_vanguard',
   'proc_elite_prism',
   'proc_boss_void_weaver',
+  'proc_boss_pulsar_bastion',
+  'proc_boss_phase_hydra',
+  'proc_boss_solar_leviathan',
+  'proc_boss_void_empress',
 ] as const;
 
 export type ProceduralAssetId = (typeof PROCEDURAL_ASSET_IDS)[number];
@@ -45,6 +49,10 @@ export const ASSET_MANIFEST: Readonly<Record<ProceduralAssetId, AssetRegistryEnt
   proc_elite_vanguard: { id: 'proc_elite_vanguard', kind: 'procedural_vector', fallbackColorHex: '#FF1E56' },
   proc_elite_prism: { id: 'proc_elite_prism', kind: 'procedural_vector', fallbackColorHex: '#F43F5E' },
   proc_boss_void_weaver: { id: 'proc_boss_void_weaver', kind: 'procedural_vector', fallbackColorHex: '#FF1E56' },
+  proc_boss_pulsar_bastion: { id: 'proc_boss_pulsar_bastion', kind: 'procedural_vector', fallbackColorHex: '#FB923C' },
+  proc_boss_phase_hydra: { id: 'proc_boss_phase_hydra', kind: 'procedural_vector', fallbackColorHex: '#C084FC' },
+  proc_boss_solar_leviathan: { id: 'proc_boss_solar_leviathan', kind: 'procedural_vector', fallbackColorHex: '#EF4444' },
+  proc_boss_void_empress: { id: 'proc_boss_void_empress', kind: 'procedural_vector', fallbackColorHex: '#FACC15' },
 };
 
 export function resolveAssetFallbackColor(id: ProceduralAssetId): string {
@@ -67,6 +75,10 @@ export type SpriteAssetKey =
   | 'elite_vanguard'
   | 'elite_prism'
   | 'boss_void_weaver'
+  | 'boss_pulsar_bastion'
+  | 'boss_phase_hydra'
+  | 'boss_solar_leviathan'
+  | 'boss_void_empress'
   | 'prop_altar'
   | 'prop_chest'
   | 'prop_beacon_heal'
@@ -100,6 +112,10 @@ export const SPRITE_MANIFEST: Readonly<Record<SpriteAssetKey, SpriteAssetSpec>> 
   elite_vanguard: { key: 'elite_vanguard', url: './assets/sprites/elite_vanguard.png', cacheSizePx: 288, needsWhiteFlash: true, rimGlowRgba: 'rgba(250, 204, 21, 0.85)' },
   elite_prism: { key: 'elite_prism', url: './assets/sprites/elite_prism.png', cacheSizePx: 288, needsWhiteFlash: true, rimGlowRgba: 'rgba(217, 70, 239, 0.85)' },
   boss_void_weaver: { key: 'boss_void_weaver', url: './assets/sprites/boss_void_weaver.png', cacheSizePx: 360, needsWhiteFlash: true, rimGlowRgba: 'rgba(255, 30, 86, 0.88)' },
+  boss_pulsar_bastion: { key: 'boss_pulsar_bastion', url: './assets/sprites/boss_pulsar_bastion.png', cacheSizePx: 360, needsWhiteFlash: true, rimGlowRgba: 'rgba(251, 146, 60, 0.90)' },
+  boss_phase_hydra: { key: 'boss_phase_hydra', url: './assets/sprites/boss_phase_hydra.png', cacheSizePx: 360, needsWhiteFlash: true, rimGlowRgba: 'rgba(192, 132, 252, 0.90)' },
+  boss_solar_leviathan: { key: 'boss_solar_leviathan', url: './assets/sprites/boss_solar_leviathan.png', cacheSizePx: 360, needsWhiteFlash: true, rimGlowRgba: 'rgba(239, 68, 68, 0.90)' },
+  boss_void_empress: { key: 'boss_void_empress', url: './assets/sprites/boss_void_empress.png', cacheSizePx: 384, needsWhiteFlash: true, rimGlowRgba: 'rgba(250, 204, 21, 0.92)' },
   prop_altar: { key: 'prop_altar', url: './assets/sprites/prop_altar.png', cacheSizePx: 192, needsWhiteFlash: false, rimGlowRgba: 'rgba(56, 189, 248, 0.82)' },
   prop_chest: { key: 'prop_chest', url: './assets/sprites/prop_chest.png', cacheSizePx: 144, needsWhiteFlash: false, rimGlowRgba: 'rgba(250, 204, 21, 0.88)' },
   prop_beacon_heal: { key: 'prop_beacon_heal', url: './assets/sprites/prop_beacon_heal.png', cacheSizePx: 128, needsWhiteFlash: false, rimGlowRgba: 'rgba(52, 211, 153, 0.85)' },
@@ -121,6 +137,10 @@ export const ENEMY_SPRITE_KEY_BY_ID: Readonly<Record<EnemyId, SpriteAssetKey>> =
   elite_vanguard: 'elite_vanguard',
   elite_prism: 'elite_prism',
   boss_void_weaver: 'boss_void_weaver',
+  boss_pulsar_bastion: 'boss_pulsar_bastion',
+  boss_phase_hydra: 'boss_phase_hydra',
+  boss_solar_leviathan: 'boss_solar_leviathan',
+  boss_void_empress: 'boss_void_empress',
 };
 
 export const FORM_SPRITE_URL_BY_TIER: Readonly<Record<number, string>> = {

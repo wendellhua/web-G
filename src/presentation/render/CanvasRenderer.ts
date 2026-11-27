@@ -97,6 +97,37 @@ interface PrevCircleTelegraph {
   y: number;
   radiusPx: number;
   progressRatio: number;
+  colorHex: string;
+}
+
+interface PrevLineTelegraph {
+  x: number;
+  y: number;
+  endX: number;
+  endY: number;
+  radiusPx: number;
+  progressRatio: number;
+  colorHex: string;
+}
+
+interface BossLaserBurst {
+  active: boolean;
+  x: number;
+  y: number;
+  endX: number;
+  endY: number;
+  widthPx: number;
+  colorHex: string;
+  lifeSec: number;
+  maxLifeSec: number;
+}
+
+function hexToRgbTriplet(hex: string): string {
+  const clean = hex.startsWith('#') ? hex.slice(1) : hex;
+  if (clean.length !== 6) return '255, 30, 86';
+  const n = Number.parseInt(clean, 16);
+  if (Number.isNaN(n)) return '255, 30, 86';
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
 }
 
 const MAX_PARTICLES = 240;
@@ -138,6 +169,19 @@ export class CanvasRenderer {
   private dashGhostCursor = 0;
   private dashGhostSampleAccumSec = 0;
   private prevCircleTelegraphs: PrevCircleTelegraph[] = [];
+  private prevLineTelegraphs: PrevLineTelegraph[] = [];
+  private readonly bossLaserBursts: BossLaserBurst[] = Array.from({ length: 12 }, () => ({
+    active: false,
+    x: 0,
+    y: 0,
+    endX: 0,
+    endY: 0,
+    widthPx: 24,
+    colorHex: '#FF1E56',
+    lifeSec: 0,
+    maxLifeSec: 0.26,
+  }));
+  private bossLaserCursor = 0;
   private outroChainAccumSec = 0;
   private outroSupernovaFired = false;
   private outroWasActive = false;
@@ -707,10 +751,11 @@ export class CanvasRenderer {
     this.drawChests(snap);
     this.drawTelegraphs(snap);
 
-    // 3. 震荡环与落雷特效
+    // 3. 震荡环、落雷与激光特效（含 Boss 激光发射闪爆）
     this.drawNovaRings(snap);
     this.drawLightningStrikes(snap);
     this.drawBeamRays(snap);
+    this.stepAndDrawBossLaserBursts(dt);
 
     // 4. 经验宝石
     this.drawXpGems(snap, minX, maxX, minY, maxY);
@@ -1245,19 +1290,32 @@ export class CanvasRenderer {
   }
 
   /**
-   * 表现层检测刚蓄满释放的圆形技能预警（如 Boss P3 虚空震爆、棱镜精英环弹），
-   * 在消失瞬间自动补足高能冲击波与星芒闪爆，避免大招落地“静默消失”。
+   * 表现层检测刚蓄满释放的圆形/射线型技能预警（Boss 震爆、双轨炮、棱镜交叉射线、圣裁十字等），
+   * 在消失瞬间自动补足高能冲击波、灼热射线闪光与星芒闪爆，避免大招落地“静默消失”。
    */
   private syncTelegraphDetonations(snap: RenderSnapshot): void {
     const low = this.settings.lowParticleMode;
     const currCircles: PrevCircleTelegraph[] = [];
+    const currLines: PrevLineTelegraph[] = [];
     for (const t of snap.telegraphs) {
+      const col = t.colorHex ?? '#FF1E56';
       if (t.shape === 'circle') {
         currCircles.push({
           x: t.x,
           y: t.y,
           radiusPx: t.radiusPx,
           progressRatio: t.progressRatio,
+          colorHex: col,
+        });
+      } else {
+        currLines.push({
+          x: t.x,
+          y: t.y,
+          endX: t.endX,
+          endY: t.endY,
+          radiusPx: t.radiusPx,
+          progressRatio: t.progressRatio,
+          colorHex: col,
         });
       }
     }
@@ -1269,13 +1327,14 @@ export class CanvasRenderer {
         (c) => Math.hypot(c.x - prev.x, c.y - prev.y) < 18 && Math.abs(c.radiusPx - prev.radiusPx) < 14,
       );
       if (!stillActive) {
-        const isHeavyBossBlast = prev.radiusPx >= 95;
+        const isHeavyBossBlast = prev.radiusPx >= 75;
+        const mainCol = prev.colorHex || (isHeavyBossBlast ? '#FF1E56' : '#FB7185');
         if (!low) {
           this.spawnShockRing(
             prev.x,
             prev.y,
             prev.radiusPx * (isHeavyBossBlast ? 1.18 : 1.08),
-            isHeavyBossBlast ? '#FF1E56' : '#FB7185',
+            mainCol,
             isHeavyBossBlast ? 0.36 : 0.26,
             isHeavyBossBlast ? 4.4 : 3.0,
           );
@@ -1291,18 +1350,85 @@ export class CanvasRenderer {
             prev.x,
             prev.y,
             Math.min(76, prev.radiusPx * 0.62),
-            isHeavyBossBlast ? '#FDA4AF' : '#E879F9',
+            mainCol,
             0.18,
           );
         }
-        this.spawnParticles(prev.x, prev.y, isHeavyBossBlast ? '#FF1E56' : '#E879F9', low ? 4 : isHeavyBossBlast ? 18 : 10);
+        this.spawnParticles(prev.x, prev.y, mainCol, low ? 4 : isHeavyBossBlast ? 16 : 10);
         if (isHeavyBossBlast && !this.settings.disableScreenShake) {
-          this.shakeMagPx = Math.max(this.shakeMagPx, 7.5);
+          this.shakeMagPx = Math.max(this.shakeMagPx, 7.0);
+        }
+      }
+    }
+
+    // 检测刚蓄满释放的射线型全息走廊（如 B2 双轨脉冲炮、B3 棱镜交叉射线、B5 圣裁十字）
+    for (const prev of this.prevLineTelegraphs) {
+      if (prev.progressRatio < 0.72) continue;
+      const stillActive = currLines.some(
+        (l) => Math.hypot(l.x - prev.x, l.y - prev.y) < 28 && Math.hypot(l.endX - prev.endX, l.endY - prev.endY) < 42,
+      );
+      if (!stillActive) {
+        // 仅对高能远程射线走廊（长度 >= 460px）触发激光齐射爆发，常规冲锋走廊不误触发
+        const len = Math.hypot(prev.endX - prev.x, prev.endY - prev.y);
+        if (len >= 460) {
+          const slot = this.bossLaserBursts[this.bossLaserCursor % this.bossLaserBursts.length];
+          this.bossLaserCursor = (this.bossLaserCursor + 1) % this.bossLaserBursts.length;
+          if (slot) {
+            slot.active = true;
+            slot.x = prev.x;
+            slot.y = prev.y;
+            slot.endX = prev.endX;
+            slot.endY = prev.endY;
+            slot.widthPx = Math.max(18, prev.radiusPx * 1.15);
+            slot.colorHex = prev.colorHex;
+            slot.lifeSec = 0.28;
+            slot.maxLifeSec = 0.28;
+          }
+          if (!low) {
+            this.spawnImpactFlash(prev.x, prev.y, 44, prev.colorHex, 0.2);
+          }
+          if (!this.settings.disableScreenShake) {
+            this.shakeMagPx = Math.max(this.shakeMagPx, 6.2);
+          }
         }
       }
     }
 
     this.prevCircleTelegraphs = currCircles;
+    this.prevLineTelegraphs = currLines;
+  }
+
+  private stepAndDrawBossLaserBursts(dt: number): void {
+    const ctx = this.ctx;
+    const low = this.settings.lowParticleMode;
+    for (let i = 0; i < this.bossLaserBursts.length; i++) {
+      const b = this.bossLaserBursts[i];
+      if (!b || !b.active) continue;
+      b.lifeSec -= dt;
+      if (b.lifeSec <= 0) {
+        b.active = false;
+        continue;
+      }
+      const ratio = Math.max(0, b.lifeSec / b.maxLifeSec);
+      const rgb = hexToRgbTriplet(b.colorHex);
+      ctx.save();
+      if (!low) ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(${rgb}, ${(0.45 * ratio).toFixed(3)})`;
+      ctx.lineWidth = b.widthPx * (1.2 + (1 - ratio) * 0.45);
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.endX, b.endY);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.92 * ratio).toFixed(3)})`;
+      ctx.lineWidth = Math.max(3, b.widthPx * 0.36 * ratio);
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.endX, b.endY);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /**
@@ -1398,6 +1524,7 @@ export class CanvasRenderer {
       const p = Math.max(0, Math.min(1, t.progressRatio));
       const urgent = p > 0.78;
       const urgentBlink = urgent ? 0.72 + 0.28 * Math.sin(now * 46) : 1;
+      const rgb = hexToRgbTriplet(t.colorHex ?? '#FF1E56');
 
       ctx.save();
       if (!low) {
@@ -1419,17 +1546,17 @@ export class CanvasRenderer {
         ctx.translate(t.x, t.y);
         ctx.rotate(ang);
 
-        // 1. 全息激光警戒通道光幕（两侧边缘聚光，中轴通透不糊屏，前端尖锥切角）
+        // 1. 全息激光警戒通道光幕（两侧边缘聚光，中轴通透不糊屏，前端尖锥切角，按 Boss 专属主色着墨）
         const laneGrad = ctx.createLinearGradient(0, -halfW, 0, halfW);
         const edgeAlpha = (0.17 + p * 0.13) * urgentBlink;
         const centerAlpha = (0.04 + p * 0.05) * urgentBlink;
-        laneGrad.addColorStop(0, 'rgba(255, 30, 86, 0)');
-        laneGrad.addColorStop(0.11, `rgba(255, 46, 99, ${edgeAlpha.toFixed(3)})`);
-        laneGrad.addColorStop(0.32, `rgba(225, 29, 72, ${centerAlpha.toFixed(3)})`);
-        laneGrad.addColorStop(0.5, `rgba(190, 18, 60, ${(centerAlpha * 0.85).toFixed(3)})`);
-        laneGrad.addColorStop(0.68, `rgba(225, 29, 72, ${centerAlpha.toFixed(3)})`);
-        laneGrad.addColorStop(0.89, `rgba(255, 46, 99, ${edgeAlpha.toFixed(3)})`);
-        laneGrad.addColorStop(1, 'rgba(255, 30, 86, 0)');
+        laneGrad.addColorStop(0, `rgba(${rgb}, 0)`);
+        laneGrad.addColorStop(0.11, `rgba(${rgb}, ${edgeAlpha.toFixed(3)})`);
+        laneGrad.addColorStop(0.32, `rgba(${rgb}, ${centerAlpha.toFixed(3)})`);
+        laneGrad.addColorStop(0.5, `rgba(${rgb}, ${(centerAlpha * 0.85).toFixed(3)})`);
+        laneGrad.addColorStop(0.68, `rgba(${rgb}, ${centerAlpha.toFixed(3)})`);
+        laneGrad.addColorStop(0.89, `rgba(${rgb}, ${edgeAlpha.toFixed(3)})`);
+        laneGrad.addColorStop(1, `rgba(${rgb}, 0)`);
 
         ctx.fillStyle = laneGrad;
         ctx.beginPath();
@@ -1441,16 +1568,16 @@ export class CanvasRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // 2. 沿冲锋方向疾速推进的蓄力充能扫光波（清晰传达释放倒计时）
+        // 2. 沿冲锋/射击方向疾速推进的蓄力充能扫光波（清晰传达释放倒计时）
         const chargeLen = Math.max(8, len * p);
         const sweepGrad = ctx.createLinearGradient(0, 0, chargeLen, 0);
-        sweepGrad.addColorStop(0, 'rgba(255, 30, 86, 0.02)');
-        sweepGrad.addColorStop(0.68, `rgba(255, 56, 108, ${(0.1 + p * 0.12).toFixed(3)})`);
+        sweepGrad.addColorStop(0, `rgba(${rgb}, 0.02)`);
+        sweepGrad.addColorStop(0.68, `rgba(${rgb}, ${(0.1 + p * 0.12).toFixed(3)})`);
         sweepGrad.addColorStop(
           0.95,
           urgent
-            ? `rgba(254, 215, 170, ${(0.34 * urgentBlink).toFixed(3)})`
-            : `rgba(255, 110, 145, ${(0.24 + p * 0.1).toFixed(3)})`,
+            ? `rgba(254, 240, 138, ${(0.34 * urgentBlink).toFixed(3)})`
+            : `rgba(${rgb}, ${(0.24 + p * 0.12).toFixed(3)})`,
         );
         sweepGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = sweepGrad;
@@ -1465,9 +1592,9 @@ export class CanvasRenderer {
 
         // 3. 两侧全息激光外边界导轨（细锐柔和，端部渐隐）
         const railGrad = ctx.createLinearGradient(0, 0, len, 0);
-        railGrad.addColorStop(0, `rgba(255, 90, 130, ${(0.35 + p * 0.25).toFixed(3)})`);
-        railGrad.addColorStop(0.78, `rgba(255, 46, 99, ${(0.62 + p * 0.26).toFixed(3)})`);
-        railGrad.addColorStop(1, 'rgba(255, 30, 86, 0.1)');
+        railGrad.addColorStop(0, `rgba(${rgb}, ${(0.35 + p * 0.25).toFixed(3)})`);
+        railGrad.addColorStop(0.78, `rgba(${rgb}, ${(0.62 + p * 0.26).toFixed(3)})`);
+        railGrad.addColorStop(1, `rgba(${rgb}, 0.1)`);
         ctx.strokeStyle = railGrad;
         ctx.lineWidth = 1.8;
         ctx.beginPath();
@@ -1482,7 +1609,7 @@ export class CanvasRenderer {
         const innerOffset = halfW * (0.86 - p * 0.62);
         ctx.strokeStyle = urgent
           ? `rgba(254, 240, 138, ${(0.65 * urgentBlink).toFixed(3)})`
-          : `rgba(253, 164, 175, ${(0.34 + p * 0.36).toFixed(3)})`;
+          : `rgba(${rgb}, ${(0.34 + p * 0.36).toFixed(3)})`;
         ctx.lineWidth = urgent ? 1.8 : 1.2;
         ctx.beginPath();
         ctx.moveTo(0, -innerOffset);
@@ -1491,7 +1618,7 @@ export class CanvasRenderer {
         ctx.lineTo(len - tipInset * 0.8, innerOffset);
         ctx.stroke();
 
-        // 5. 通道内高速前滚方向箭头阵列（>>>），清晰传达冲锋方向与紧迫感
+        // 5. 通道内高速前滚方向箭头阵列（>>>），清晰传达冲锋/射线方向与紧迫感
         if (!low) {
           const spacing = 46;
           const scroll = (now * (170 + p * 160)) % spacing;
@@ -1505,8 +1632,8 @@ export class CanvasRenderer {
             const alpha = edgeFade * (0.28 + p * 0.42) * urgentBlink;
             if (alpha < 0.04) continue;
             ctx.strokeStyle = urgent
-              ? `rgba(254, 226, 226, ${alpha.toFixed(3)})`
-              : `rgba(255, 92, 132, ${alpha.toFixed(3)})`;
+              ? `rgba(254, 249, 195, ${alpha.toFixed(3)})`
+              : `rgba(${rgb}, ${alpha.toFixed(3)})`;
             ctx.beginPath();
             ctx.moveTo(dist - chevW, -chevH);
             ctx.lineTo(dist, 0);
@@ -1518,7 +1645,7 @@ export class CanvasRenderer {
         // 6. 施法舰首聚能弧 + 终点锐角锁定标
         ctx.strokeStyle = urgent
           ? `rgba(254, 240, 138, ${(0.85 * urgentBlink).toFixed(3)})`
-          : `rgba(255, 120, 150, ${(0.45 + p * 0.35).toFixed(3)})`;
+          : `rgba(${rgb}, ${(0.45 + p * 0.35).toFixed(3)})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(0, 0, halfW * 0.62, -Math.PI * 0.45, Math.PI * 0.45);
@@ -1534,12 +1661,12 @@ export class CanvasRenderer {
         const r = Math.max(12, t.radiusPx);
         ctx.translate(t.x, t.y);
 
-        // 1. 中心通透、边缘高亮的全息力场底晕（绝不平涂糊死主角视野）
+        // 1. 中心通透、边缘高亮的全息力场底晕（按 Boss 专属配色着墨，绝不平涂糊死主角视野）
         const fieldGrad = ctx.createRadialGradient(0, 0, r * 0.1, 0, 0, r);
-        fieldGrad.addColorStop(0, `rgba(255, 30, 86, ${(0.03 + p * 0.04).toFixed(3)})`);
-        fieldGrad.addColorStop(0.66, `rgba(244, 63, 94, ${(0.07 + p * 0.09).toFixed(3)})`);
-        fieldGrad.addColorStop(0.93, `rgba(255, 46, 99, ${((0.22 + p * 0.22) * urgentBlink).toFixed(3)})`);
-        fieldGrad.addColorStop(1, 'rgba(255, 30, 86, 0)');
+        fieldGrad.addColorStop(0, `rgba(${rgb}, ${(0.03 + p * 0.04).toFixed(3)})`);
+        fieldGrad.addColorStop(0.66, `rgba(${rgb}, ${(0.07 + p * 0.09).toFixed(3)})`);
+        fieldGrad.addColorStop(0.93, `rgba(${rgb}, ${((0.22 + p * 0.22) * urgentBlink).toFixed(3)})`);
+        fieldGrad.addColorStop(1, `rgba(${rgb}, 0)`);
         ctx.fillStyle = fieldGrad;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1549,18 +1676,18 @@ export class CanvasRenderer {
         const waveR = Math.max(4, r * p);
         const waveInner = Math.max(0, waveR - Math.max(14, r * 0.24));
         const waveGrad = ctx.createRadialGradient(0, 0, waveInner, 0, 0, waveR);
-        waveGrad.addColorStop(0, 'rgba(255, 30, 86, 0)');
+        waveGrad.addColorStop(0, `rgba(${rgb}, 0)`);
         waveGrad.addColorStop(
           0.72,
           urgent
-            ? `rgba(251, 146, 60, ${(0.22 * urgentBlink).toFixed(3)})`
-            : `rgba(255, 46, 99, ${(0.14 + p * 0.14).toFixed(3)})`,
+            ? `rgba(254, 240, 138, ${(0.22 * urgentBlink).toFixed(3)})`
+            : `rgba(${rgb}, ${(0.14 + p * 0.14).toFixed(3)})`,
         );
         waveGrad.addColorStop(
           0.96,
           urgent
             ? `rgba(254, 240, 138, ${(0.58 * urgentBlink).toFixed(3)})`
-            : `rgba(254, 205, 211, ${(0.34 + p * 0.22).toFixed(3)})`,
+            : `rgba(${rgb}, ${(0.36 + p * 0.22).toFixed(3)})`,
         );
         waveGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = waveGrad;
@@ -1571,14 +1698,14 @@ export class CanvasRenderer {
         // 能量波锋线细环
         ctx.strokeStyle = urgent
           ? `rgba(254, 249, 195, ${(0.88 * urgentBlink).toFixed(3)})`
-          : `rgba(254, 205, 211, ${(0.48 + p * 0.34).toFixed(3)})`;
+          : `rgba(${rgb}, ${(0.52 + p * 0.34).toFixed(3)})`;
         ctx.lineWidth = urgent ? 2.2 : 1.5;
         ctx.beginPath();
         ctx.arc(0, 0, waveR, 0, Math.PI * 2);
         ctx.stroke();
 
         // 3. 外圈细全息轮廓 + 四段旋转战术警戒弧
-        ctx.strokeStyle = `rgba(255, 46, 99, ${(0.42 + p * 0.34).toFixed(3)})`;
+        ctx.strokeStyle = `rgba(${rgb}, ${(0.42 + p * 0.34).toFixed(3)})`;
         ctx.lineWidth = 1.4;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1587,7 +1714,7 @@ export class CanvasRenderer {
         const rot = now * (urgent ? 1.9 : 0.95);
         ctx.strokeStyle = urgent
           ? `rgba(254, 240, 138, ${(0.88 * urgentBlink).toFixed(3)})`
-          : `rgba(255, 80, 120, ${(0.68 + p * 0.22).toFixed(3)})`;
+          : `rgba(${rgb}, ${(0.68 + p * 0.22).toFixed(3)})`;
         ctx.lineWidth = 2.6;
         ctx.lineCap = 'round';
         for (let k = 0; k < 4; k++) {
@@ -1603,7 +1730,7 @@ export class CanvasRenderer {
           const notchInner = r - (6 + p * 7);
           ctx.strokeStyle = urgent
             ? `rgba(254, 240, 138, ${(0.85 * urgentBlink).toFixed(3)})`
-            : `rgba(254, 165, 185, ${(0.52 + p * 0.3).toFixed(3)})`;
+            : `rgba(${rgb}, ${(0.52 + p * 0.3).toFixed(3)})`;
           ctx.lineWidth = 1.7;
           for (let k = 0; k < 4; k++) {
             const a = -rot * 0.65 + (k * Math.PI) / 2;
@@ -1618,7 +1745,7 @@ export class CanvasRenderer {
           // 中心空心微十字标
           const crossOuter = Math.min(12, r * 0.2);
           const crossGap = Math.min(4, r * 0.06);
-          ctx.strokeStyle = `rgba(255, 228, 230, ${(0.45 + p * 0.4).toFixed(3)})`;
+          ctx.strokeStyle = `rgba(255, 245, 245, ${(0.45 + p * 0.4).toFixed(3)})`;
           ctx.lineWidth = 1.4;
           ctx.beginPath();
           ctx.moveTo(-crossOuter, 0);
@@ -2207,10 +2334,33 @@ export class CanvasRenderer {
           } else if (isBoss) {
             const dashBoost = e.entityState === 'SKILL_EXECUTE' ? 1.52 : e.entityState === 'SKILL_TELEGRAPH' ? 0.82 : 1;
             const jetLen = half * (0.54 + (e.bossPhase ?? 1) * 0.1) * flicker * dashBoost;
-            const jetCol = e.bossPhase === 3 ? 'rgba(250,204,21,0.84)' : 'rgba(255,30,86,0.82)';
-            this.drawThrusterFlame(ctx, -half * 0.54, -half * 0.34, jetLen, half * 0.115, jetCol, '#FEF9C3', true);
-            this.drawThrusterFlame(ctx, -half * 0.54, half * 0.34, jetLen, half * 0.115, jetCol, '#FEF9C3', true);
-            this.drawThrusterFlame(ctx, -half * 0.74, 0, jetLen * 1.12, half * 0.145, 'rgba(217,70,239,0.8)', '#FFFFFF', true);
+            if (e.enemyId === 'boss_pulsar_bastion') {
+              const jetCol = e.bossPhase === 3 ? 'rgba(254,240,138,0.88)' : 'rgba(251,146,60,0.86)';
+              this.drawThrusterFlame(ctx, -half * 0.66, -half * 0.32, jetLen * 0.95, half * 0.12, jetCol, '#FEF9C3', true);
+              this.drawThrusterFlame(ctx, -half * 0.66, half * 0.32, jetLen * 0.95, half * 0.12, jetCol, '#FEF9C3', true);
+            } else if (e.enemyId === 'boss_phase_hydra') {
+              // 悬浮裂隙魔眼：四角紫红相位能量微光环，无机械尾焰
+              ctx.strokeStyle = `rgba(192, 132, 252, ${(0.35 + 0.25 * flicker).toFixed(2)})`;
+              ctx.lineWidth = 2.2;
+              ctx.beginPath();
+              ctx.arc(0, 0, half * (0.72 + (e.bossPhase ?? 1) * 0.04), 0, Math.PI * 2);
+              ctx.stroke();
+            } else if (e.enemyId === 'boss_solar_leviathan') {
+              const jetCol = e.bossPhase === 3 ? 'rgba(253,224,71,0.9)' : 'rgba(239,68,68,0.86)';
+              this.drawThrusterFlame(ctx, -half * 0.84, 0, jetLen * 1.18, half * 0.14, jetCol, '#FEF9C3', true);
+              this.drawThrusterFlame(ctx, -half * 0.24, -half * 0.42, jetLen * 0.52, half * 0.08, 'rgba(251,146,60,0.78)', '#FEF08A', true);
+              this.drawThrusterFlame(ctx, -half * 0.24, half * 0.42, jetLen * 0.52, half * 0.08, 'rgba(251,146,60,0.78)', '#FEF08A', true);
+            } else if (e.enemyId === 'boss_void_empress') {
+              const jetCol = e.bossPhase === 3 ? 'rgba(250,204,21,0.9)' : 'rgba(147,51,234,0.85)';
+              this.drawThrusterFlame(ctx, -half * 0.72, -half * 0.22, jetLen, half * 0.11, jetCol, '#FEF9C3', true);
+              this.drawThrusterFlame(ctx, -half * 0.72, half * 0.22, jetLen, half * 0.11, jetCol, '#FEF9C3', true);
+              this.drawThrusterFlame(ctx, -half * 0.82, 0, jetLen * 1.2, half * 0.14, 'rgba(255,30,86,0.84)', '#FFFFFF', true);
+            } else {
+              const jetCol = e.bossPhase === 3 ? 'rgba(250,204,21,0.84)' : 'rgba(255,30,86,0.82)';
+              this.drawThrusterFlame(ctx, -half * 0.54, -half * 0.34, jetLen, half * 0.115, jetCol, '#FEF9C3', true);
+              this.drawThrusterFlame(ctx, -half * 0.54, half * 0.34, jetLen, half * 0.115, jetCol, '#FEF9C3', true);
+              this.drawThrusterFlame(ctx, -half * 0.74, 0, jetLen * 1.12, half * 0.145, 'rgba(217,70,239,0.8)', '#FFFFFF', true);
+            }
           }
           ctx.restore();
         }
@@ -2394,59 +2544,165 @@ export class CanvasRenderer {
             }
             ctx.restore();
           } else if (isBoss) {
+            const isIntro = e.entityState === 'BOSS_SPAWN_INTRO';
             const isCharging = e.entityState === 'SKILL_TELEGRAPH';
-            const isDashing = e.entityState === 'SKILL_EXECUTE';
+            const isExecuting = e.entityState === 'SKILL_EXECUTE';
             const pulse = 0.55 + 0.45 * Math.sin(t * (isCharging ? 18 : e.bossPhase === 3 ? 11 : 6));
+            const bossRgb = hexToRgbTriplet(e.colorHex);
+
+            // 通用入场跃迁展开环（按各 Boss 专属配色呈现 1.1s 威压入场）
+            if (isIntro) {
+              const introR = half * (0.95 + 0.28 * Math.sin(t * 14));
+              ctx.strokeStyle = `rgba(${bossRgb}, 0.78)`;
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(0, 0, introR, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+
+            // 中央反应核呼吸辉光（各 Boss 专属色域）
+            const coreX = e.enemyId === 'boss_solar_leviathan' ? half * 0.52 : 0;
             const coreR = half * ((isCharging ? 0.34 : 0.24) + pulse * 0.08);
-            const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, coreR);
+            const cg = ctx.createRadialGradient(coreX, 0, 2, coreX, 0, coreR);
             cg.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
             cg.addColorStop(
               0.42,
-              e.bossPhase === 3 || isCharging ? 'rgba(250, 204, 21, 0.78)' : 'rgba(255, 30, 86, 0.7)',
+              e.bossPhase === 3 || isCharging ? `rgba(${bossRgb}, 0.86)` : `rgba(${bossRgb}, 0.68)`,
             );
             cg.addColorStop(1, 'rgba(0, 0, 0, 0)');
             ctx.fillStyle = cg;
             ctx.beginPath();
-            ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+            ctx.arc(coreX, 0, coreR, 0, Math.PI * 2);
             ctx.fill();
 
-            // 技能蓄力时核心十字星芒闪烁 + 舰首过载聚能光核
-            if (isCharging) {
-              const starR = half * (0.42 + pulse * 0.14);
-              ctx.strokeStyle = 'rgba(254, 249, 195, 0.85)';
-              ctx.lineWidth = 1.8;
+            if (e.enemyId === 'boss_pulsar_bastion') {
+              // B2：前置双联重炮口充能电弧与发射闪光
+              const muzzleR = (isCharging ? 8.5 : isExecuting ? 11 : 4.5) * (0.75 + 0.25 * pulse);
+              ctx.fillStyle = isExecuting ? 'rgba(255, 255, 255, 0.92)' : `rgba(251, 146, 60, ${(0.65 + 0.3 * pulse).toFixed(2)})`;
               ctx.beginPath();
-              ctx.moveTo(half * 0.52 - starR * 0.5, 0);
-              ctx.lineTo(half * 0.52 + starR * 0.75, 0);
-              ctx.moveTo(half * 0.52, -starR * 0.55);
-              ctx.lineTo(half * 0.52, starR * 0.55);
+              ctx.arc(half * 0.84, -half * 0.42, muzzleR, 0, Math.PI * 2);
+              ctx.arc(half * 0.84, half * 0.42, muzzleR, 0, Math.PI * 2);
+              ctx.fill();
+              if (isCharging) {
+                ctx.strokeStyle = 'rgba(254, 240, 138, 0.82)';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.moveTo(half * 0.84, -half * 0.42);
+                ctx.lineTo(half * 0.56, 0);
+                ctx.lineTo(half * 0.84, half * 0.42);
+                ctx.stroke();
+              }
+            } else if (e.enemyId === 'boss_phase_hydra') {
+              // B3：四角悬浮棱镜子核高频紫电连接弧 + 蓄力相位扭曲环
+              ctx.strokeStyle = `rgba(232, 121, 249, ${(isCharging ? 0.85 : 0.48 + 0.25 * pulse).toFixed(2)})`;
+              ctx.lineWidth = isCharging ? 2.1 : 1.3;
+              for (let k = 0; k < 4; k++) {
+                const a = Math.PI / 4 + (k * Math.PI) / 2;
+                const jitter = Math.sin(t * 24 + k * 2.1) * half * 0.08;
+                const mx = Math.cos(a) * half * 0.44 - Math.sin(a) * jitter;
+                const my = Math.sin(a) * half * 0.44 + Math.cos(a) * jitter;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * half * 0.22, Math.sin(a) * half * 0.22);
+                ctx.lineTo(mx, my);
+                ctx.lineTo(Math.cos(a) * half * 0.68, Math.sin(a) * half * 0.68);
+                ctx.stroke();
+              }
+              if (isCharging) {
+                ctx.strokeStyle = 'rgba(240, 171, 252, 0.78)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, half * (0.55 + 0.12 * pulse), t * 2, t * 2 + Math.PI * 1.3);
+                ctx.stroke();
+              }
+            } else if (e.enemyId === 'boss_solar_leviathan') {
+              // B4：P3 恒星引力向内吸流丝 / P2 旋焰喷口火舌
+              if (isCharging && e.bossPhase === 3) {
+                ctx.strokeStyle = 'rgba(253, 224, 71, 0.72)';
+                ctx.lineWidth = 1.6;
+                for (let k = 0; k < 8; k++) {
+                  const a = t * 1.4 + (k * Math.PI) / 4;
+                  const outerR = half * (1.25 - ((t * 1.8 + k * 0.13) % 0.65));
+                  ctx.beginPath();
+                  ctx.moveTo(coreX + Math.cos(a) * outerR, Math.sin(a) * outerR);
+                  ctx.lineTo(coreX + Math.cos(a) * (outerR * 0.45), Math.sin(a) * (outerR * 0.45));
+                  ctx.stroke();
+                }
+              } else if (isExecuting && e.bossPhase === 2) {
+                ctx.fillStyle = `rgba(253, 224, 71, ${(0.55 + 0.35 * pulse).toFixed(2)})`;
+                ctx.beginPath();
+                ctx.arc(coreX + half * 0.14, 0, half * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            } else if (e.enemyId === 'boss_void_empress') {
+              // B5：舰首碎金猩红日冕光弧 + 六翼终焉紫金光环（P2/P3 旋转黑洞星环）
+              ctx.strokeStyle = e.bossPhase === 3 ? 'rgba(250, 204, 21, 0.88)' : 'rgba(255, 30, 86, 0.72)';
+              ctx.lineWidth = 2.4;
+              ctx.beginPath();
+              ctx.arc(half * 0.56, 0, half * 0.34, -Math.PI * 0.62, Math.PI * 0.62);
               ctx.stroke();
+
+              if ((e.bossPhase ?? 1) >= 2 || isCharging) {
+                ctx.save();
+                ctx.rotate(t * (isCharging ? 2.4 : 0.9));
+                ctx.strokeStyle = `rgba(250, 204, 21, ${(0.42 + 0.3 * pulse).toFixed(2)})`;
+                ctx.lineWidth = 1.8;
+                for (let k = 0; k < 4; k++) {
+                  const a = (k * Math.PI) / 2;
+                  ctx.beginPath();
+                  ctx.arc(0, 0, half * 0.88, a + 0.22, a + Math.PI * 0.5 - 0.22);
+                  ctx.stroke();
+                }
+                ctx.restore();
+              }
+              if (isCharging) {
+                const starR = half * (0.58 + pulse * 0.16);
+                ctx.strokeStyle = 'rgba(254, 249, 195, 0.92)';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.moveTo(-starR, 0);
+                ctx.lineTo(starR, 0);
+                ctx.moveTo(0, -starR);
+                ctx.lineTo(0, starR);
+                ctx.stroke();
+              }
+            } else {
+              // B1 虚空织主：经典蓄力星芒与高速冲锋超音速抛物线激波弧
+              if (isCharging) {
+                const starR = half * (0.42 + pulse * 0.14);
+                ctx.strokeStyle = 'rgba(254, 249, 195, 0.85)';
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.moveTo(half * 0.52 - starR * 0.5, 0);
+                ctx.lineTo(half * 0.52 + starR * 0.75, 0);
+                ctx.moveTo(half * 0.52, -starR * 0.55);
+                ctx.lineTo(half * 0.52, starR * 0.55);
+                ctx.stroke();
+              }
+
+              if (isExecuting) {
+                ctx.lineCap = 'round';
+                ctx.strokeStyle =
+                  e.bossPhase === 3
+                    ? 'rgba(250, 204, 21, 0.48)'
+                    : e.bossPhase === 2
+                      ? 'rgba(217, 70, 239, 0.48)'
+                      : 'rgba(255, 30, 86, 0.48)';
+                ctx.lineWidth = 7.5;
+                ctx.beginPath();
+                ctx.moveTo(half * 0.08, -half * 0.84);
+                ctx.quadraticCurveTo(half * 1.42, 0, half * 0.08, half * 0.84);
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(255, 241, 242, 0.9)';
+                ctx.lineWidth = 2.1;
+                ctx.stroke();
+              }
             }
 
-            // 高速冲锋瞬间：双层猩红/鎏金超音速抛物线激波弧
-            if (isDashing) {
-              ctx.lineCap = 'round';
-              ctx.strokeStyle =
-                e.bossPhase === 3
-                  ? 'rgba(250, 204, 21, 0.48)'
-                  : e.bossPhase === 2
-                    ? 'rgba(217, 70, 239, 0.48)'
-                    : 'rgba(255, 30, 86, 0.48)';
-              ctx.lineWidth = 7.5;
-              ctx.beginPath();
-              ctx.moveTo(half * 0.08, -half * 0.84);
-              ctx.quadraticCurveTo(half * 1.42, 0, half * 0.08, half * 0.84);
-              ctx.stroke();
-
-              ctx.strokeStyle = 'rgba(255, 241, 242, 0.9)';
-              ctx.lineWidth = 2.1;
-              ctx.stroke();
-            }
-
-            // P2/P3 Boss 能量镰翼边缘过载脉冲光弧
+            // P2/P3 Boss 边缘过载脉冲光弧
             if ((e.bossPhase ?? 1) >= 2) {
               ctx.lineCap = 'round';
-              ctx.strokeStyle = e.bossPhase === 3 ? 'rgba(250, 204, 21, 0.78)' : 'rgba(232, 121, 249, 0.7)';
+              ctx.strokeStyle = e.bossPhase === 3 ? 'rgba(250, 204, 21, 0.78)' : `rgba(${bossRgb}, 0.72)`;
               ctx.lineWidth = 2.4;
               ctx.beginPath();
               ctx.arc(-half * 0.08, 0, half * 0.82, -1.25, -0.45);
@@ -2695,20 +2951,22 @@ export class CanvasRenderer {
     for (const eb of snap.enemyBullets) {
       if (eb.x < minX || eb.x > maxX || eb.y < minY || eb.y > maxY) continue;
       const r = eb.radiusPx;
-      // 敌方高危猩红炽橙能量弹（外晕 + 锐利猩红边 + 炽白核心，与我方青/金弹幕 100% 视觉分离）
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.32)';
+      const col = eb.colorHex ?? '#F43F5E';
+      const rgb = hexToRgbTriplet(col);
+      // 敌方高危能量弹（按 Boss 专属高对比暖/邪色系着色 + 炽白核心，与我方青蓝体系 100% 视觉分离）
+      ctx.fillStyle = `rgba(${rgb}, 0.34)`;
       ctx.beginPath();
       ctx.arc(eb.x, eb.y, r * 1.9 * pulse, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = '#F43F5E';
+      ctx.fillStyle = col;
       ctx.beginPath();
       ctx.arc(eb.x, eb.y, r * 1.12, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = '#FB923C';
+      ctx.fillStyle = col === '#C084FC' || col === '#E879F9' ? '#F5D0FE' : '#FB923C';
       ctx.beginPath();
-      ctx.arc(eb.x, eb.y, r * 0.82, 0, Math.PI * 2);
+      ctx.arc(eb.x, eb.y, r * 0.78, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = '#FEF9C3';
@@ -3128,7 +3386,7 @@ export class CanvasRenderer {
     if (t < 1.65) {
       const overloadRatio = Math.min(1, t / 1.25);
       const implodeRatio = t > 1.25 ? Math.min(1, (t - 1.25) / 0.4) : 0;
-      this.drawBossOverloadHull(bx, by, br, overloadRatio, implodeRatio, snap.worldTimeSec, low);
+      this.drawBossOverloadHull(bx, by, br, overloadRatio, implodeRatio, snap.worldTimeSec, low, vo.bossEnemyId);
 
       // 第一幕（0.00s – 1.25s）：舰体高频连锁殉爆（每 0.13s 随机点位闪爆 + 微震）
       if (t < 1.25) {
@@ -3225,6 +3483,7 @@ export class CanvasRenderer {
     implodeRatio: number,
     nowSec: number,
     low: boolean,
+    bossEnemyId: SpriteAssetKey = 'boss_void_weaver',
   ): void {
     const ctx = this.ctx;
     const jitterAmp = (2.5 + overloadRatio * 9.5) * (1 - implodeRatio * 0.45);
@@ -3258,7 +3517,7 @@ export class CanvasRenderer {
     ctx.save();
     ctx.rotate(wobbleRot);
     ctx.scale(scale, scale);
-    const cached = this.sprites.get('boss_void_weaver');
+    const cached = this.sprites.get(bossEnemyId);
     if (cached) {
       ctx.drawImage(cached.normal, -half, -half, drawSize, drawSize);
       const flashStrobe = 0.25 + 0.75 * Math.abs(Math.sin(nowSec * (18 + overloadRatio * 24)));

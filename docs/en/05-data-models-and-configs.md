@@ -5,7 +5,7 @@
 > **Document Version**: V2.0 (Campaign Stages, 5 Forms, Slot Caps & SaveDataV2 Auto-Migration)  
 > **Single Source of Truth**: `schemas/config.schema.ts`, `schemas/save.schema.ts`, `src/config/gameConfig.ts`
 
-> **Live Implementation Note (V2.1 Balance Patch)**: In live `schemas/config.schema.ts` and `src/config/gameConfig.ts`, Boss counts across `stage_1`–`stage_5` are **`[1, 2, 3, 4, 4]`** spawning every `120s` (`[120]`, `[120,240]`, `[120,240,360]`, `[120,240,360,480]`, `[120,240,360,480]`), and stage time limits are **`[180, 300, 420, 540, 540] s`** (`3 / 5 / 7 / 9 / 9 min`).
+> **Live Implementation Note (V2.1 Balance Patch)**: In live `schemas/config.schema.ts` and `src/config/gameConfig.ts`, Boss counts across `stage_1`–`stage_5` are **`[1, 2, 3, 4, 5]`** with the first Boss at `120s` and subsequent Bosses every `60s` (`[120]`, `[120,180]`, `[120,180,240]`, `[120,180,240,300]`, `[120,180,240,300,360]`), cycling through 5 unique Boss designs (`boss_void_weaver` → `boss_pulsar_bastion` → `boss_phase_hydra` → `boss_solar_leviathan` → `boss_void_empress`), while stage time limits remain **`[180, 300, 420, 540, 540] s`** (`3 / 5 / 7 / 9 / 9 min`).
 
 ---
 

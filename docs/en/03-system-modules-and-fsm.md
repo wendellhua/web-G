@@ -41,7 +41,7 @@
 ### 2.2 `WaveDirectorSystem` (Multi-Boss & Timeout Enforcement)
 - Reads the current `StageConfig` (`stage_1` … `stage_5`) derived from `currentLevel`.
 - Spawns stage-gated enemy tiers according to wave progress while respecting the soft cap (`maxActiveEnemies = 240`).
-- Spawns multi-phase Bosses (`boss_void_weaver`) strictly on `bossSpawnTimesSec[]` (2-minute intervals: `120s, 240s, ...`).
+- Spawns multi-phase distinct Bosses along `stage.bossSequence[]` (`boss_void_weaver`, `boss_pulsar_bastion`, `boss_phase_hydra`, `boss_solar_leviathan`, `boss_void_empress`) strictly on `bossSpawnTimesSec[]` (first Boss at `120s`, then every `60s`: `120s, 180s, 240s, 300s, 360s`).
 - Evaluates settlement deterministically every fixed tick:
   - **Immediate Victory**: `bossesDefeated >= requiredBossCount` → emit `RUN_VICTORY` and transition to `VICTORY_MODAL`.
   - **Timeout Defeat**: `elapsedSec >= stageDurationSec && bossesDefeated < requiredBossCount` → emit `RUN_DEFEAT(reason: 'TIMEOUT')` and transition to `GAME_OVER_MODAL`.

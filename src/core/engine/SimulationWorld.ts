@@ -9,6 +9,7 @@ import type {
   AppFsmState,
   BeaconKind,
   BeaconRuntimeEntity,
+  BossEnemyId,
   BossPhase,
   ChestRuntimeEntity,
   DefeatReason,
@@ -96,6 +97,10 @@ interface InternalEnemy extends EnemyRuntimeEntity {
   comboRemaining: number;
   bombTargetX: number;
   bombTargetY: number;
+  skillStepIndex: number;
+  skillSubTimerSec: number;
+  multiTargetX: number[];
+  multiTargetY: number[];
 }
 
 interface InternalBeamVisual {
@@ -242,10 +247,12 @@ export class SimulationWorld {
   private victoryOutroBossX = 0;
   private victoryOutroBossY = 0;
   private victoryOutroBossRadiusPx = 56;
+  private victoryOutroBossEnemyId: BossEnemyId = 'boss_void_weaver';
   private victoryOutroCanContinueEndless = false;
   private lastKilledBossX = 0;
   private lastKilledBossY = 0;
   private lastKilledBossRadiusPx = 56;
+  private lastKilledBossEnemyId: BossEnemyId = 'boss_void_weaver';
 
   constructor() {
     this.economy = this.createEmptyEconomy();
@@ -381,10 +388,12 @@ export class SimulationWorld {
     this.victoryOutroBossX = 0;
     this.victoryOutroBossY = 0;
     this.victoryOutroBossRadiusPx = 56;
+    this.victoryOutroBossEnemyId = 'boss_void_weaver';
     this.victoryOutroCanContinueEndless = false;
     this.lastKilledBossX = 0;
     this.lastKilledBossY = 0;
     this.lastKilledBossRadiusPx = 56;
+    this.lastKilledBossEnemyId = 'boss_void_weaver';
 
     // 开局投放 5 只初始集群怪，确保 3 秒内立刻开打
     for (let i = 0; i < 5; i++) {
@@ -421,10 +430,12 @@ export class SimulationWorld {
     this.victoryOutroBossX = 0;
     this.victoryOutroBossY = 0;
     this.victoryOutroBossRadiusPx = 56;
+    this.victoryOutroBossEnemyId = 'boss_void_weaver';
     this.victoryOutroCanContinueEndless = false;
     this.lastKilledBossX = 0;
     this.lastKilledBossY = 0;
     this.lastKilledBossRadiusPx = 56;
+    this.lastKilledBossEnemyId = 'boss_void_weaver';
     this.appState = 'TITLE';
     this.activeRunPhase = 'RUN_NORMAL';
   }
@@ -570,7 +581,7 @@ export class SimulationWorld {
     const bal = GAME_CONFIG.balance;
     const st = this.currentStage;
 
-    // 1. 按当前阶段 2 分钟间隔时间轴依次刷新 Boss（1 / 2 / 3 / 4 / 4 只，全数消灭即立刻通关结算）
+    // 1. 按当前阶段 Boss 时间轴依次刷新（首只 02:00 降临，后续每 1 分钟刷新 1 只；共 1 / 2 / 3 / 4 / 4 只，全数消灭即立刻通关结算）
     while (
       this.activeRunPhase !== 'RUN_ENDLESS' &&
       this.bossesSpawned < st.bossSpawnTimesSec.length &&
@@ -660,7 +671,8 @@ export class SimulationWorld {
     const angle = (bossIndex * Math.PI * 0.75) % (Math.PI * 2);
     const bx = this.player.x + Math.cos(angle) * 360;
     const by = this.player.y + Math.sin(angle) * 360;
-    const boss = this.spawnEnemy('boss_void_weaver', bx, by);
+    const bossId: BossEnemyId = this.currentStage.bossSequence[bossIndex] ?? 'boss_void_weaver';
+    const boss = this.spawnEnemy(bossId, bx, by);
     if (boss) {
       boss.entityState = 'BOSS_SPAWN_INTRO';
       boss.stateTimerSec = 1.1;
@@ -668,7 +680,7 @@ export class SimulationWorld {
       this.activeBossIds.push(boss.id);
       this.eventBus.emit({
         type: 'BOSS_SPAWNED',
-        enemyId: 'boss_void_weaver',
+        enemyId: bossId,
         x: boss.x,
         y: boss.y,
       });
@@ -755,6 +767,10 @@ export class SimulationWorld {
       comboRemaining: 0,
       bombTargetX: x,
       bombTargetY: y,
+      skillStepIndex: 0,
+      skillSubTimerSec: 0,
+      multiTargetX: [],
+      multiTargetY: [],
     };
     this.enemies.push(entity);
     return entity;
@@ -1368,8 +1384,8 @@ export class SimulationWorld {
       const dirY = dy / dist;
       const moveSpeed = cfg.baseMoveSpeedPxPerSec * endless.speedMult;
 
-      // ---- 终局 Boss「虚空织主」3 阶段状态机 ----
-      if (e.enemyId === 'boss_void_weaver') {
+      // ---- 五大阶段终局 Boss 多阶段状态机（按 enemyId 路由专属技能循环） ----
+      if (e.tier === 'boss') {
         this.stepBossAi(e, dt, dirX, dirY, dist, moveSpeed, endless.dmgMult);
       } else if (e.enemyId === 'elite_vanguard') {
         this.stepVanguardAi(e, dt, dirX, dirY, dist, moveSpeed, endless.dmgMult);
@@ -1629,22 +1645,56 @@ export class SimulationWorld {
     }
   }
 
+  private pointToSegmentDistSq(
+    px: number,
+    py: number,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+  ): number {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abLenSq = abx * abx + aby * aby;
+    if (abLenSq <= 1e-6) return distSq(px, py, ax, ay);
+    const t = clamp(((px - ax) * abx + (py - ay) * aby) / abLenSq, 0, 1);
+    const cx = ax + abx * t;
+    const cy = ay + aby * t;
+    return distSq(px, py, cx, cy);
+  }
+
+  private isPlayerHitByLaserCorridor(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    halfWidthPx: number,
+  ): boolean {
+    const hitR = halfWidthPx + this.player.radiusPx * 0.72;
+    return this.pointToSegmentDistSq(this.player.x, this.player.y, ax, ay, bx, by) <= hitR * hitR;
+  }
+
   private stepBossAi(
     e: InternalEnemy,
     dt: number,
     dirX: number,
     dirY: number,
-    _dist: number,
+    dist: number,
     moveSpeed: number,
     dmgMult: number,
   ): void {
-    const cfg = ENEMY_BY_ID.boss_void_weaver;
-    const hpRatio = e.hp / e.maxHp;
+    const cfg = ENEMY_BY_ID[e.enemyId];
+    const hpRatio = e.hp / Math.max(1, e.maxHp);
     const nextPhase: BossPhase = hpRatio <= 0.3 ? 3 : hpRatio <= 0.65 ? 2 : 1;
     if (e.bossPhase !== null && nextPhase > e.bossPhase && nextPhase !== 1) {
       e.bossPhase = nextPhase;
       this.eventBus.emit({ type: 'BOSS_PHASE_CHANGED', newPhase: nextPhase, x: e.x, y: e.y });
-      if (nextPhase === 3) {
+      if (
+        nextPhase === 3 &&
+        (e.enemyId === 'boss_void_weaver' ||
+          e.enemyId === 'boss_phase_hydra' ||
+          e.enemyId === 'boss_void_empress')
+      ) {
         this.spawnEnemy('splitter_mini', e.x + 90, e.y);
         this.spawnEnemy('splitter_mini', e.x - 90, e.y);
       }
@@ -1662,6 +1712,38 @@ export class SimulationWorld {
     }
 
     const phase = e.bossPhase ?? 1;
+    switch (e.enemyId) {
+      case 'boss_pulsar_bastion':
+        this.stepBossPulsarBastion(e, cfg.skillCooldownSec, dt, dirX, dirY, moveSpeed, dmgMult, phase);
+        return;
+      case 'boss_phase_hydra':
+        this.stepBossPhaseHydra(e, cfg.skillCooldownSec, dt, dirX, dirY, moveSpeed, dmgMult, phase);
+        return;
+      case 'boss_solar_leviathan':
+        this.stepBossSolarLeviathan(e, cfg.skillCooldownSec, dt, dirX, dirY, dist, moveSpeed, dmgMult, phase);
+        return;
+      case 'boss_void_empress':
+        this.stepBossVoidEmpress(e, cfg.skillCooldownSec, dt, dirX, dirY, moveSpeed, dmgMult, phase);
+        return;
+      default:
+        this.stepBossVoidWeaver(e, cfg.explosionRadiusPx, cfg.projectileSpeedPxPerSec, cfg.skillCooldownSec, dt, dirX, dirY, moveSpeed, dmgMult, phase);
+        return;
+    }
+  }
+
+  /** B1：虚空织主（阶段 1 经典冲锋型 Boss，完全保留原机制） */
+  private stepBossVoidWeaver(
+    e: InternalEnemy,
+    explosionRadiusPx: number,
+    dashSpeed: number,
+    baseSkillCd: number,
+    dt: number,
+    dirX: number,
+    dirY: number,
+    moveSpeed: number,
+    dmgMult: number,
+    phase: BossPhase,
+  ): void {
     if (e.entityState === 'SKILL_TELEGRAPH') {
       e.vx = 0;
       e.vy = 0;
@@ -1677,6 +1759,7 @@ export class SimulationWorld {
         endY: e.y + e.telegraphDirY * 420,
         radiusPx: e.radiusPx * 0.85,
         progressRatio: progress,
+        colorHex: '#FF1E56',
       });
       if (phase === 3) {
         this.telegraphs.push({
@@ -1686,22 +1769,22 @@ export class SimulationWorld {
           y: e.bombTargetY,
           endX: e.bombTargetX,
           endY: e.bombTargetY,
-          radiusPx: cfg.explosionRadiusPx,
+          radiusPx: explosionRadiusPx,
           progressRatio: progress,
+          colorHex: '#FF1E56',
         });
       }
       if (e.stateTimerSec <= 0) {
         e.entityState = 'SKILL_EXECUTE';
         e.stateTimerSec = 0.55;
-        // 冲锋启动时发射留有安全缝隙的弹幕环（Boss 技能伤害 +20%：16 -> 19.2，P3 震爆 24 -> 28.8）
         const bulletCount = phase === 1 ? 10 : phase === 2 ? 14 : 16;
         const baseOff = this.elapsedSec * 1.4;
         for (let k = 0; k < bulletCount; k++) {
           const ang = baseOff + (k * Math.PI * 2) / bulletCount;
-          this.spawnEnemyBullet(e.x, e.y, Math.cos(ang) * 205, Math.sin(ang) * 205, safeDamage(19.2 * dmgMult));
+          this.spawnEnemyBullet(e.x, e.y, Math.cos(ang) * 205, Math.sin(ang) * 205, safeDamage(19.2 * dmgMult), '#FF1E56');
         }
         if (phase === 3) {
-          const rSum = cfg.explosionRadiusPx + this.player.radiusPx;
+          const rSum = explosionRadiusPx + this.player.radiusPx;
           if (distSq(e.bombTargetX, e.bombTargetY, this.player.x, this.player.y) <= rSum * rSum) {
             this.damagePlayer(safeDamage(28.8 * dmgMult));
           }
@@ -1711,8 +1794,8 @@ export class SimulationWorld {
     }
 
     if (e.entityState === 'SKILL_EXECUTE') {
-      e.vx = e.telegraphDirX * cfg.projectileSpeedPxPerSec;
-      e.vy = e.telegraphDirY * cfg.projectileSpeedPxPerSec;
+      e.vx = e.telegraphDirX * dashSpeed;
+      e.vy = e.telegraphDirY * dashSpeed;
       e.stateTimerSec -= dt;
       if (e.stateTimerSec <= 0) {
         if (e.comboRemaining > 1) {
@@ -1737,7 +1820,7 @@ export class SimulationWorld {
       e.stateTimerSec -= dt;
       if (e.stateTimerSec <= 0) {
         e.entityState = 'ACTIVE_CHASE';
-        e.skillCooldownSec = phase === 3 ? 2.1 : phase === 2 ? 2.6 : cfg.skillCooldownSec;
+        e.skillCooldownSec = phase === 3 ? 2.1 : phase === 2 ? 2.6 : baseSkillCd;
       }
       return;
     }
@@ -1756,7 +1839,710 @@ export class SimulationWorld {
     }
   }
 
-  private spawnEnemyBullet(x: number, y: number, vx: number, vy: number, damage: number): void {
+  /** B2：脉冲磁暴堡垒（阶段 2 重装火力压制：P1 双波扇形齐射 / P2 双轨平行脉冲炮 / P3 三连电磁轰炸圈） */
+  private stepBossPulsarBastion(
+    e: InternalEnemy,
+    baseSkillCd: number,
+    dt: number,
+    dirX: number,
+    dirY: number,
+    moveSpeed: number,
+    dmgMult: number,
+    phase: BossPhase,
+  ): void {
+    const aimAng = Math.atan2(e.telegraphDirY, e.telegraphDirX);
+    const perpX = -e.telegraphDirY;
+    const perpY = e.telegraphDirX;
+
+    if (e.entityState === 'SKILL_TELEGRAPH') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      const dur = phase === 3 ? 0.62 : 0.78;
+      const progress = clamp(1 - e.stateTimerSec / dur, 0, 1);
+
+      if (phase === 1) {
+        // 扇形左右边界引导线
+        for (let s = -1; s <= 1; s += 2) {
+          const a = aimAng + s * 0.44;
+          this.telegraphs.push({
+            id: e.id + (s > 0 ? 1000 : 2000),
+            shape: 'line',
+            x: e.x,
+            y: e.y,
+            endX: e.x + Math.cos(a) * 380,
+            endY: e.y + Math.sin(a) * 380,
+            radiusPx: 14,
+            progressRatio: progress,
+            colorHex: '#FB923C',
+          });
+        }
+      } else if (phase === 2) {
+        // 双轨平行激光炮走廊（间隔 76px 留夹心安全走位道）
+        const offset = 38;
+        for (let s = -1; s <= 1; s += 2) {
+          const ox = e.x + perpX * offset * s;
+          const oy = e.y + perpY * offset * s;
+          this.telegraphs.push({
+            id: e.id + (s > 0 ? 3000 : 4000),
+            shape: 'line',
+            x: ox,
+            y: oy,
+            endX: ox + e.telegraphDirX * 520,
+            endY: oy + e.telegraphDirY * 520,
+            radiusPx: 20,
+            progressRatio: progress,
+            colorHex: '#F59E0B',
+          });
+        }
+      } else {
+        // P3：圆形电磁过载炮击圈
+        this.telegraphs.push({
+          id: e.id + 5000,
+          shape: 'circle',
+          x: e.bombTargetX,
+          y: e.bombTargetY,
+          endX: e.bombTargetX,
+          endY: e.bombTargetY,
+          radiusPx: 95,
+          progressRatio: progress,
+          colorHex: '#F59E0B',
+        });
+      }
+
+      if (e.stateTimerSec <= 0) {
+        if (phase === 1) {
+          // 第一波 7 发熔橙扇形散弹
+          for (let k = -3; k <= 3; k++) {
+            const a = aimAng + k * 0.14;
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 225, Math.sin(a) * 225, safeDamage(19.2 * dmgMult), '#FB923C');
+          }
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.34;
+          e.skillSubTimerSec = 0.24;
+        } else if (phase === 2) {
+          const offset = 38;
+          let hit = false;
+          for (let s = -1; s <= 1; s += 2) {
+            const ox = e.x + perpX * offset * s;
+            const oy = e.y + perpY * offset * s;
+            if (this.isPlayerHitByLaserCorridor(ox, oy, ox + e.telegraphDirX * 520, oy + e.telegraphDirY * 520, 18)) {
+              hit = true;
+            }
+          }
+          if (hit) {
+            this.damagePlayer(safeDamage(28.8 * dmgMult));
+          }
+          // 两侧副炮补射 6 发弧形橙弹
+          for (let k = 0; k < 6; k++) {
+            const a = aimAng + (k < 3 ? 0.55 + k * 0.22 : -0.55 - (k - 3) * 0.22);
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 195, Math.sin(a) * 195, safeDamage(19.2 * dmgMult), '#F59E0B');
+          }
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.36;
+          e.skillSubTimerSec = 99;
+        } else {
+          // P3 引爆当前轰炸圈并向外溅射 6 发橙金弹
+          const rSum = 95 + this.player.radiusPx;
+          if (distSq(e.bombTargetX, e.bombTargetY, this.player.x, this.player.y) <= rSum * rSum) {
+            this.damagePlayer(safeDamage(28.8 * dmgMult));
+          }
+          const baseOff = this.elapsedSec * 1.2 + e.comboRemaining;
+          for (let k = 0; k < 6; k++) {
+            const a = baseOff + (k * Math.PI * 2) / 6;
+            this.spawnEnemyBullet(e.bombTargetX, e.bombTargetY, Math.cos(a) * 185, Math.sin(a) * 185, safeDamage(19.2 * dmgMult), '#FB923C');
+          }
+          if (e.comboRemaining > 1) {
+            e.comboRemaining -= 1;
+            e.entityState = 'SKILL_TELEGRAPH';
+            e.stateTimerSec = 0.62;
+            const leadAng = this.rng.nextFloat() * Math.PI * 2;
+            const leadDist = 45 + this.rng.nextFloat() * 55;
+            e.bombTargetX = this.player.x + Math.cos(leadAng) * leadDist;
+            e.bombTargetY = this.player.y + Math.sin(leadAng) * leadDist;
+          } else {
+            e.entityState = 'SKILL_RECOVER';
+            e.stateTimerSec = 0.85;
+          }
+        }
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_EXECUTE') {
+      // 后坐力微退反馈
+      e.vx = -e.telegraphDirX * 26;
+      e.vy = -e.telegraphDirY * 26;
+      e.stateTimerSec -= dt;
+      e.skillSubTimerSec -= dt;
+      if (phase === 1 && e.skillSubTimerSec <= 0) {
+        e.skillSubTimerSec = 99;
+        // 第二波错位 6 发扇形齐射
+        for (let k = 0; k < 6; k++) {
+          const a = aimAng + (k - 2.5) * 0.14;
+          this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 235, Math.sin(a) * 235, safeDamage(19.2 * dmgMult), '#F59E0B');
+        }
+      }
+      if (e.stateTimerSec <= 0) {
+        e.entityState = 'SKILL_RECOVER';
+        e.stateTimerSec = 0.85;
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_RECOVER') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      if (e.stateTimerSec <= 0) {
+        e.entityState = 'ACTIVE_CHASE';
+        e.skillCooldownSec = phase === 3 ? 2.1 : phase === 2 ? 2.6 : baseSkillCd;
+      }
+      return;
+    }
+
+    e.vx = dirX * moveSpeed;
+    e.vy = dirY * moveSpeed;
+    e.skillCooldownSec -= dt;
+    if (e.skillCooldownSec <= 0) {
+      e.entityState = 'SKILL_TELEGRAPH';
+      e.stateTimerSec = phase === 3 ? 0.62 : 0.78;
+      e.comboRemaining = phase === 3 ? 3 : 1;
+      e.telegraphDirX = dirX;
+      e.telegraphDirY = dirY;
+      e.bombTargetX = this.player.x;
+      e.bombTargetY = this.player.y;
+    }
+  }
+
+  /** B3：相位裂隙魔眼（阶段 3 折跃控场：P1 折跃落点环+紫晶螺旋 / P2 棱镜交叉激光 / P3 二连折跃+起跳点坍缩圈） */
+  private stepBossPhaseHydra(
+    e: InternalEnemy,
+    baseSkillCd: number,
+    dt: number,
+    dirX: number,
+    dirY: number,
+    moveSpeed: number,
+    dmgMult: number,
+    phase: BossPhase,
+  ): void {
+    if (e.entityState === 'SKILL_TELEGRAPH') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      const dur = phase === 3 ? 0.72 : 0.8;
+      const progress = clamp(1 - e.stateTimerSec / dur, 0, 1);
+
+      if (phase === 2) {
+        // 两条交叉全息紫红激光线穿过目标点
+        const tx = e.bombTargetX;
+        const ty = e.bombTargetY;
+        const baseA = (e.skillStepIndex % 2) * (Math.PI / 4);
+        for (let k = 0; k < 2; k++) {
+          const a = baseA + k * (Math.PI / 2);
+          const dx = Math.cos(a) * 270;
+          const dy = Math.sin(a) * 270;
+          this.telegraphs.push({
+            id: e.id + 6000 + k,
+            shape: 'line',
+            x: tx - dx,
+            y: ty - dy,
+            endX: tx + dx,
+            endY: ty + dy,
+            radiusPx: 18,
+            progressRatio: progress,
+            colorHex: '#C084FC',
+          });
+        }
+      } else {
+        // P1 / P3：洋红折跃落点圆环预警（绝不贴脸秒杀）
+        this.telegraphs.push({
+          id: e.id + 7000,
+          shape: 'circle',
+          x: e.bombTargetX,
+          y: e.bombTargetY,
+          endX: e.bombTargetX,
+          endY: e.bombTargetY,
+          radiusPx: 78,
+          progressRatio: progress,
+          colorHex: '#E879F9',
+        });
+        if (phase === 3) {
+          // 起跳点相位坍缩圈预警
+          this.telegraphs.push({
+            id: e.id + 7500,
+            shape: 'circle',
+            x: e.x,
+            y: e.y,
+            endX: e.x,
+            endY: e.y,
+            radiusPx: 100,
+            progressRatio: progress,
+            colorHex: '#C084FC',
+          });
+        }
+      }
+
+      if (e.stateTimerSec <= 0) {
+        if (phase === 2) {
+          const tx = e.bombTargetX;
+          const ty = e.bombTargetY;
+          const baseA = (e.skillStepIndex % 2) * (Math.PI / 4);
+          let hit = false;
+          for (let k = 0; k < 2; k++) {
+            const a = baseA + k * (Math.PI / 2);
+            const dx = Math.cos(a) * 270;
+            const dy = Math.sin(a) * 270;
+            if (this.isPlayerHitByLaserCorridor(tx - dx, ty - dy, tx + dx, ty + dy, 17)) {
+              hit = true;
+            }
+          }
+          if (hit) {
+            this.damagePlayer(safeDamage(28.8 * dmgMult));
+          }
+          for (let k = 0; k < 8; k++) {
+            const a = baseA + (k * Math.PI * 2) / 8;
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 205, Math.sin(a) * 205, safeDamage(19.2 * dmgMult), '#E879F9');
+          }
+          e.skillStepIndex += 1;
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.35;
+        } else {
+          // 若在 P3，起跳点奇点圈先爆发判定
+          if (phase === 3) {
+            const rSum = 100 + this.player.radiusPx;
+            if (distSq(e.x, e.y, this.player.x, this.player.y) <= rSum * rSum) {
+              this.damagePlayer(safeDamage(28.8 * dmgMult));
+            }
+          }
+          // 相位折跃至预警落点并释放紫晶螺旋弹环
+          e.x = e.bombTargetX;
+          e.y = e.bombTargetY;
+          const count = phase === 3 ? 12 : 10;
+          const baseOff = this.elapsedSec * 1.9 + e.skillStepIndex * 0.6;
+          for (let k = 0; k < count; k++) {
+            const a = baseOff + (k * Math.PI * 2) / count;
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 205, Math.sin(a) * 205, safeDamage(19.2 * dmgMult), '#C084FC');
+          }
+          e.skillStepIndex += 1;
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.38;
+        }
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_EXECUTE') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      if (e.stateTimerSec <= 0) {
+        if (phase === 3 && e.comboRemaining > 1) {
+          e.comboRemaining -= 1;
+          e.entityState = 'SKILL_TELEGRAPH';
+          e.stateTimerSec = 0.72;
+          const flankAng = Math.atan2(this.player.y - e.y, this.player.x - e.x) + (e.skillStepIndex % 2 === 0 ? 0.9 : -0.9);
+          e.bombTargetX = this.player.x + Math.cos(flankAng) * 250;
+          e.bombTargetY = this.player.y + Math.sin(flankAng) * 250;
+        } else {
+          e.entityState = 'SKILL_RECOVER';
+          e.stateTimerSec = 0.82;
+        }
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_RECOVER') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      if (e.stateTimerSec <= 0) {
+        e.entityState = 'ACTIVE_CHASE';
+        e.skillCooldownSec = phase === 3 ? 2.1 : phase === 2 ? 2.6 : baseSkillCd;
+      }
+      return;
+    }
+
+    e.vx = dirX * moveSpeed;
+    e.vy = dirY * moveSpeed;
+    e.skillCooldownSec -= dt;
+    if (e.skillCooldownSec <= 0) {
+      e.entityState = 'SKILL_TELEGRAPH';
+      e.stateTimerSec = phase === 3 ? 0.72 : 0.8;
+      e.comboRemaining = phase === 3 ? 2 : 1;
+      e.telegraphDirX = dirX;
+      e.telegraphDirY = dirY;
+      if (phase === 2) {
+        e.bombTargetX = this.player.x;
+        e.bombTargetY = this.player.y;
+      } else {
+        const flankAng = Math.atan2(this.player.y - e.y, this.player.x - e.x) + (e.skillStepIndex % 2 === 0 ? 0.85 : -0.85);
+        e.bombTargetX = this.player.x + Math.cos(flankAng) * 260;
+        e.bombTargetY = this.player.y + Math.sin(flankAng) * 260;
+      }
+    }
+  }
+
+  /** B4：焚星熔核利维坦（阶段 4 巨兽轰炸与火流：P1 三星熔岩陨石雨 / P2 双股旋焰吐息 / P3 恒星微引力+熔核超新星） */
+  private stepBossSolarLeviathan(
+    e: InternalEnemy,
+    baseSkillCd: number,
+    dt: number,
+    dirX: number,
+    dirY: number,
+    dist: number,
+    moveSpeed: number,
+    dmgMult: number,
+    phase: BossPhase,
+  ): void {
+    if (e.entityState === 'SKILL_TELEGRAPH') {
+      e.vx = phase === 2 ? dirX * moveSpeed * 0.35 : 0;
+      e.vy = phase === 2 ? dirY * moveSpeed * 0.35 : 0;
+      e.stateTimerSec -= dt;
+      const dur = phase === 3 ? 0.9 : phase === 2 ? 0.48 : 0.8;
+      const progress = clamp(1 - e.stateTimerSec / dur, 0, 1);
+
+      if (phase === 1) {
+        // 3 枚熔岩陨星落地预警环
+        for (let k = 0; k < e.multiTargetX.length; k++) {
+          const tx = e.multiTargetX[k]!;
+          const ty = e.multiTargetY[k]!;
+          this.telegraphs.push({
+            id: e.id + 8000 + k,
+            shape: 'circle',
+            x: tx,
+            y: ty,
+            endX: tx,
+            endY: ty,
+            radiusPx: 86,
+            progressRatio: progress,
+            colorHex: '#EF4444',
+          });
+        }
+      } else if (phase === 2) {
+        // 巨颚蓄焰简短核心预警环
+        this.telegraphs.push({
+          id: e.id + 8400,
+          shape: 'circle',
+          x: e.x,
+          y: e.y,
+          endX: e.x,
+          endY: e.y,
+          radiusPx: 74,
+          progressRatio: progress,
+          colorHex: '#FB923C',
+        });
+      } else {
+        // P3：恒星微引力柔和拉扯（仅 45 px/s，远低于玩家 150+ px/s 初速，走位可轻松脱离）+ 超新星熔核圈
+        if (dist > 36 && dist < 440) {
+          this.player.x -= dirX * 45 * dt;
+          this.player.y -= dirY * 45 * dt;
+        }
+        this.telegraphs.push({
+          id: e.id + 8800,
+          shape: 'circle',
+          x: e.x,
+          y: e.y,
+          endX: e.x,
+          endY: e.y,
+          radiusPx: 145,
+          progressRatio: progress,
+          colorHex: '#FDE047',
+        });
+      }
+
+      if (e.stateTimerSec <= 0) {
+        if (phase === 1) {
+          let hit = false;
+          const rSum = 86 + this.player.radiusPx;
+          for (let k = 0; k < e.multiTargetX.length; k++) {
+            const tx = e.multiTargetX[k]!;
+            const ty = e.multiTargetY[k]!;
+            if (distSq(tx, ty, this.player.x, this.player.y) <= rSum * rSum) {
+              hit = true;
+            }
+            for (let s = 0; s < 4; s++) {
+              const a = k * 0.4 + (s * Math.PI) / 2;
+              this.spawnEnemyBullet(tx, ty, Math.cos(a) * 165, Math.sin(a) * 165, safeDamage(19.2 * dmgMult), '#FB923C');
+            }
+          }
+          if (hit) this.damagePlayer(safeDamage(28.8 * dmgMult));
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.32;
+        } else if (phase === 2) {
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 1.75;
+          e.skillSubTimerSec = 0;
+        } else {
+          const rSum = 145 + this.player.radiusPx;
+          if (distSq(e.x, e.y, this.player.x, this.player.y) <= rSum * rSum) {
+            this.damagePlayer(safeDamage(28.8 * dmgMult));
+          }
+          const baseOff = this.elapsedSec * 1.3;
+          for (let k = 0; k < 14; k++) {
+            const a = baseOff + (k * Math.PI * 2) / 14;
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 210, Math.sin(a) * 210, safeDamage(19.2 * dmgMult), '#EF4444');
+          }
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.4;
+        }
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_EXECUTE') {
+      e.stateTimerSec -= dt;
+      if (phase === 2) {
+        // 缓行喷吐双股旋转烈焰火球链
+        e.vx = dirX * moveSpeed * 0.55;
+        e.vy = dirY * moveSpeed * 0.55;
+        e.skillSubTimerSec -= dt;
+        if (e.skillSubTimerSec <= 0) {
+          e.skillSubTimerSec = 0.16;
+          const spinAng = e.skillStepIndex * 0.34;
+          e.skillStepIndex += 1;
+          for (let arm = 0; arm < 2; arm++) {
+            const a = spinAng + arm * Math.PI;
+            this.spawnEnemyBullet(
+              e.x + Math.cos(a) * 32,
+              e.y + Math.sin(a) * 32,
+              Math.cos(a) * 200,
+              Math.sin(a) * 200,
+              safeDamage(19.2 * dmgMult),
+              arm === 0 ? '#FB923C' : '#EF4444',
+            );
+          }
+        }
+      } else {
+        e.vx = 0;
+        e.vy = 0;
+      }
+      if (e.stateTimerSec <= 0) {
+        e.entityState = 'SKILL_RECOVER';
+        e.stateTimerSec = 0.85;
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_RECOVER') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      if (e.stateTimerSec <= 0) {
+        e.entityState = 'ACTIVE_CHASE';
+        e.skillCooldownSec = phase === 3 ? 2.1 : phase === 2 ? 2.6 : baseSkillCd;
+      }
+      return;
+    }
+
+    e.vx = dirX * moveSpeed;
+    e.vy = dirY * moveSpeed;
+    e.skillCooldownSec -= dt;
+    if (e.skillCooldownSec <= 0) {
+      e.entityState = 'SKILL_TELEGRAPH';
+      e.stateTimerSec = phase === 3 ? 0.9 : phase === 2 ? 0.48 : 0.8;
+      e.telegraphDirX = dirX;
+      e.telegraphDirY = dirY;
+      e.multiTargetX.length = 0;
+      e.multiTargetY.length = 0;
+      if (phase === 1) {
+        const baseA = this.rng.nextFloat() * Math.PI * 2;
+        e.multiTargetX.push(this.player.x);
+        e.multiTargetY.push(this.player.y);
+        for (let k = 0; k < 2; k++) {
+          const a = baseA + k * 2.2;
+          e.multiTargetX.push(this.player.x + Math.cos(a) * 145);
+          e.multiTargetY.push(this.player.y + Math.sin(a) * 145);
+        }
+      }
+    }
+  }
+
+  /** B5：黑潮终焉女皇（阶段 5 终极压轴：P1 双旋莲华花瓣阵 / P2 圣裁十字激光+折跃 / P3 终焉三段交响循环） */
+  private stepBossVoidEmpress(
+    e: InternalEnemy,
+    baseSkillCd: number,
+    dt: number,
+    dirX: number,
+    dirY: number,
+    moveSpeed: number,
+    dmgMult: number,
+    phase: BossPhase,
+  ): void {
+    // 确定当前招式类型：0=双旋莲华弹幕, 1=四向圣裁十字激光, 2=三点莲华星爆圈
+    const moveKind = phase === 1 ? 0 : phase === 2 ? 1 : e.skillStepIndex % 3;
+
+    if (e.entityState === 'SKILL_TELEGRAPH') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      const dur = moveKind === 1 ? 0.85 : 0.74;
+      const progress = clamp(1 - e.stateTimerSec / dur, 0, 1);
+
+      if (moveKind === 0) {
+        this.telegraphs.push({
+          id: e.id + 9000,
+          shape: 'circle',
+          x: e.x,
+          y: e.y,
+          endX: e.x,
+          endY: e.y,
+          radiusPx: 84,
+          progressRatio: progress,
+          colorHex: '#FACC15',
+        });
+      } else if (moveKind === 1) {
+        const crossOff = (e.skillStepIndex % 2) * (Math.PI / 4);
+        for (let k = 0; k < 4; k++) {
+          const a = crossOff + (k * Math.PI) / 2;
+          this.telegraphs.push({
+            id: e.id + 9100 + k,
+            shape: 'line',
+            x: e.x,
+            y: e.y,
+            endX: e.x + Math.cos(a) * 560,
+            endY: e.y + Math.sin(a) * 560,
+            radiusPx: 20,
+            progressRatio: progress,
+            colorHex: '#FACC15',
+          });
+        }
+      } else {
+        for (let k = 0; k < e.multiTargetX.length; k++) {
+          const tx = e.multiTargetX[k]!;
+          const ty = e.multiTargetY[k]!;
+          this.telegraphs.push({
+            id: e.id + 9200 + k,
+            shape: 'circle',
+            x: tx,
+            y: ty,
+            endX: tx,
+            endY: ty,
+            radiusPx: 95,
+            progressRatio: progress,
+            colorHex: '#FF1E56',
+          });
+        }
+      }
+
+      if (e.stateTimerSec <= 0) {
+        if (moveKind === 0) {
+          const count = phase === 3 ? 14 : 12;
+          const baseOff = this.elapsedSec * 1.1;
+          for (let k = 0; k < count; k++) {
+            const a = baseOff + (k * Math.PI * 2) / count;
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 205, Math.sin(a) * 205, safeDamage(19.2 * dmgMult), '#FF1E56');
+          }
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.4;
+          e.skillSubTimerSec = 0.24;
+        } else if (moveKind === 1) {
+          const crossOff = (e.skillStepIndex % 2) * (Math.PI / 4);
+          let hit = false;
+          for (let k = 0; k < 4; k++) {
+            const a = crossOff + (k * Math.PI) / 2;
+            if (this.isPlayerHitByLaserCorridor(e.x, e.y, e.x + Math.cos(a) * 560, e.y + Math.sin(a) * 560, 18)) {
+              hit = true;
+            }
+          }
+          if (hit) this.damagePlayer(safeDamage(28.8 * dmgMult));
+          // 圣裁后轻盈战术折跃（保持安全距离）并洒出 10 发皇紫余烬弹
+          const warpAng = Math.atan2(this.player.y - e.y, this.player.x - e.x) + (e.skillStepIndex % 2 === 0 ? 1.05 : -1.05);
+          e.x = this.player.x + Math.cos(warpAng) * 250;
+          e.y = this.player.y + Math.sin(warpAng) * 250;
+          for (let k = 0; k < 10; k++) {
+            const a = crossOff + (k * Math.PI * 2) / 10;
+            this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 195, Math.sin(a) * 195, safeDamage(19.2 * dmgMult), '#C084FC');
+          }
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.38;
+          e.skillSubTimerSec = 99;
+        } else {
+          let hit = false;
+          const rSum = 95 + this.player.radiusPx;
+          for (let k = 0; k < e.multiTargetX.length; k++) {
+            const tx = e.multiTargetX[k]!;
+            const ty = e.multiTargetY[k]!;
+            if (distSq(tx, ty, this.player.x, this.player.y) <= rSum * rSum) hit = true;
+            for (let s = 0; s < 4; s++) {
+              const a = Math.PI / 4 + (s * Math.PI) / 2;
+              this.spawnEnemyBullet(tx, ty, Math.cos(a) * 180, Math.sin(a) * 180, safeDamage(19.2 * dmgMult), '#FACC15');
+            }
+          }
+          if (hit) this.damagePlayer(safeDamage(28.8 * dmgMult));
+          e.entityState = 'SKILL_EXECUTE';
+          e.stateTimerSec = 0.36;
+          e.skillSubTimerSec = 99;
+        }
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_EXECUTE') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      e.skillSubTimerSec -= dt;
+      if (moveKind === 0 && e.skillSubTimerSec <= 0) {
+        e.skillSubTimerSec = 99;
+        const count = phase === 3 ? 14 : 12;
+        const baseOff = this.elapsedSec * 1.1 + Math.PI / count;
+        for (let k = 0; k < count; k++) {
+          const a = baseOff + (k * Math.PI * 2) / count;
+          this.spawnEnemyBullet(e.x, e.y, Math.cos(a) * 225, Math.sin(a) * 225, safeDamage(19.2 * dmgMult), '#FACC15');
+        }
+      }
+      if (e.stateTimerSec <= 0) {
+        e.skillStepIndex += 1;
+        e.entityState = 'SKILL_RECOVER';
+        e.stateTimerSec = 0.8;
+      }
+      return;
+    }
+
+    if (e.entityState === 'SKILL_RECOVER') {
+      e.vx = 0;
+      e.vy = 0;
+      e.stateTimerSec -= dt;
+      if (e.stateTimerSec <= 0) {
+        e.entityState = 'ACTIVE_CHASE';
+        e.skillCooldownSec = phase === 3 ? 2.0 : phase === 2 ? 2.5 : baseSkillCd;
+      }
+      return;
+    }
+
+    e.vx = dirX * moveSpeed;
+    e.vy = dirY * moveSpeed;
+    e.skillCooldownSec -= dt;
+    if (e.skillCooldownSec <= 0) {
+      const nextKind = phase === 1 ? 0 : phase === 2 ? 1 : e.skillStepIndex % 3;
+      e.entityState = 'SKILL_TELEGRAPH';
+      e.stateTimerSec = nextKind === 1 ? 0.85 : 0.74;
+      e.telegraphDirX = dirX;
+      e.telegraphDirY = dirY;
+      e.multiTargetX.length = 0;
+      e.multiTargetY.length = 0;
+      if (nextKind === 2) {
+        const baseA = this.rng.nextFloat() * Math.PI * 2;
+        e.multiTargetX.push(this.player.x);
+        e.multiTargetY.push(this.player.y);
+        for (let k = 0; k < 2; k++) {
+          const a = baseA + k * 2.1;
+          e.multiTargetX.push(this.player.x + Math.cos(a) * 155);
+          e.multiTargetY.push(this.player.y + Math.sin(a) * 155);
+        }
+      }
+    }
+  }
+
+  private spawnEnemyBullet(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    damage: number,
+    colorHex?: string,
+  ): void {
     const MAX_ENEMY_BULLETS = 180;
     if (this.enemyBullets.length >= MAX_ENEMY_BULLETS) {
       this.swapRemove(this.enemyBullets, 0);
@@ -1770,6 +2556,7 @@ export class SimulationWorld {
       radiusPx: 6,
       damage,
       lifeSec: 4.0,
+      colorHex,
     });
   }
 
@@ -1950,6 +2737,7 @@ export class SimulationWorld {
       this.lastKilledBossX = e.x;
       this.lastKilledBossY = e.y;
       this.lastKilledBossRadiusPx = e.radiusPx;
+      this.lastKilledBossEnemyId = e.enemyId as BossEnemyId;
       const idx = this.activeBossIds.indexOf(e.id);
       if (idx !== -1) this.activeBossIds.splice(idx, 1);
       this.bossesKilled += 1;
@@ -2184,6 +2972,7 @@ export class SimulationWorld {
     this.victoryOutroBossY =
       this.lastKilledBossX !== 0 || this.lastKilledBossY !== 0 ? this.lastKilledBossY : this.player.y;
     this.victoryOutroBossRadiusPx = this.lastKilledBossRadiusPx || 56;
+    this.victoryOutroBossEnemyId = this.lastKilledBossEnemyId;
     this.appState = 'VICTORY_OUTRO';
 
     this.eventBus.emit({
@@ -2525,6 +3314,7 @@ export class SimulationWorld {
             bossX: this.victoryOutroBossX,
             bossY: this.victoryOutroBossY,
             bossRadiusPx: this.victoryOutroBossRadiusPx,
+            bossEnemyId: this.victoryOutroBossEnemyId,
           }
         : null,
       cameraTargetX: p.x,
@@ -2606,7 +3396,12 @@ export class SimulationWorld {
           isCollapse: n.isCollapse,
         }),
       ),
-      enemyBullets: this.enemyBullets.map((eb) => ({ x: eb.x, y: eb.y, radiusPx: eb.radiusPx })),
+      enemyBullets: this.enemyBullets.map((eb) => ({
+        x: eb.x,
+        y: eb.y,
+        radiusPx: eb.radiusPx,
+        colorHex: eb.colorHex,
+      })),
       xpGems: this.xpGems.map((g) => ({ x: g.x, y: g.y, tier: g.tier, magnetized: g.magnetized })),
       chests: this.chests.map((c) => ({ x: c.x, y: c.y, radiusPx: c.radiusPx })),
       altars: this.altars.map((a) => ({
@@ -2668,13 +3463,14 @@ export class SimulationWorld {
     });
 
     const activeBosses = this.enemies.filter((e) => e.tier === 'boss');
-    const primaryBoss = activeBosses[0];
+    const primaryBoss = activeBosses[activeBosses.length - 1];
     const bossHud: BossHudView | null = primaryBoss
       ? {
+          enemyId: primaryBoss.enemyId as BossEnemyId,
           name:
             activeBosses.length > 1
-              ? `${ENEMY_BY_ID.boss_void_weaver.name}（同屏 ${activeBosses.length} 只）`
-              : ENEMY_BY_ID.boss_void_weaver.name,
+              ? `${ENEMY_BY_ID[primaryBoss.enemyId].name}（同屏 ${activeBosses.length} 只）`
+              : ENEMY_BY_ID[primaryBoss.enemyId].name,
           hp: Math.max(0, Math.round(primaryBoss.hp)),
           maxHp: primaryBoss.maxHp,
           phase: primaryBoss.bossPhase ?? 1,

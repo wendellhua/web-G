@@ -155,6 +155,7 @@ export interface EnemyBulletRuntimeEntity {
   radiusPx: number;
   damage: number;
   lifeSec: number;
+  colorHex?: string;
 }
 
 export interface XpGemRuntimeEntity {
@@ -201,6 +202,7 @@ export interface TelegraphZoneEntity {
   endY: number;
   radiusPx: number;
   progressRatio: number;
+  colorHex?: string;
 }
 
 export interface RunEconomyRuntimeState {

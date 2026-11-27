@@ -51,6 +51,16 @@ export const EVOLUTION_IDS = [
 export const EvolutionIdSchema = z.enum(EVOLUTION_IDS);
 export type EvolutionId = z.infer<typeof EvolutionIdSchema>;
 
+export const BOSS_ENEMY_IDS = [
+  'boss_void_weaver',
+  'boss_pulsar_bastion',
+  'boss_phase_hydra',
+  'boss_solar_leviathan',
+  'boss_void_empress',
+] as const;
+export const BossEnemyIdSchema = z.enum(BOSS_ENEMY_IDS);
+export type BossEnemyId = z.infer<typeof BossEnemyIdSchema>;
+
 export const ENEMY_IDS = [
   'swarm',
   'runner',
@@ -61,7 +71,7 @@ export const ENEMY_IDS = [
   'splitter_mini',
   'elite_vanguard',
   'elite_prism',
-  'boss_void_weaver',
+  ...BOSS_ENEMY_IDS,
 ] as const;
 export const EnemyIdSchema = z.enum(ENEMY_IDS);
 export type EnemyId = z.infer<typeof EnemyIdSchema>;

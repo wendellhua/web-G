@@ -4,6 +4,8 @@
  */
 import { z } from 'zod';
 import {
+  BOSS_ENEMY_IDS,
+  BossEnemyIdSchema,
   DebugTimeScaleSchema,
   ENEMY_IDS,
   EnemyIdSchema,
@@ -91,7 +93,8 @@ export const StageConfigSchema = z.object({
   maxPassiveSlots: z.number().int().min(1).max(4),
   starterWeaponLevel: z.number().int().min(1).max(5),
   durationLimitSec: PositiveFiniteNumber,
-  bossSpawnTimesSec: z.array(PositiveFiniteNumber).min(1).max(4),
+  bossSpawnTimesSec: z.array(PositiveFiniteNumber).min(1).max(5),
+  bossSequence: z.array(BossEnemyIdSchema).min(1).max(5),
   spawnIntervalSec: PositiveFiniteNumber.min(0.12),
   packSizeMin: z.number().int().min(1),
   packSizeMax: z.number().int().min(1),
@@ -240,7 +243,7 @@ const EXPECTED_PASSIVE_SLOTS = [1, 2, 2, 3, 4] as const;
 const EXPECTED_STARTER_LEVELS = [1, 2, 3, 4, 5] as const;
 const EXPECTED_FORM_BASE_ATK_BONUS = [0, 0.05, 0.1, 0.15, 0.2] as const;
 const EXPECTED_STAGE_DURATIONS_SEC = [180, 300, 420, 540, 540] as const;
-const EXPECTED_BOSS_COUNTS = [1, 2, 3, 4, 4] as const;
+const EXPECTED_BOSS_COUNTS = [1, 2, 3, 4, 5] as const;
 
 export const GameConfigBundleSchema = z
   .object({
@@ -250,7 +253,7 @@ export const GameConfigBundleSchema = z
     weapons: z.array(WeaponConfigSchema).length(6),
     passives: z.array(PassiveConfigSchema).length(6),
     evolutions: z.array(EvolutionRecipeConfigSchema).length(6),
-    enemies: z.array(EnemyConfigSchema).length(10),
+    enemies: z.array(EnemyConfigSchema).length(14),
     mapEvents: MapEventConfigSchema,
     talents: z.array(MetaTalentConfigSchema).length(8),
   })
@@ -332,12 +335,22 @@ export const GameConfigBundleSchema = z
           message: `Stage ${st.id} boss count must be ${EXPECTED_BOSS_COUNTS[i]}`,
         });
       }
+      const expectedSeq = BOSS_ENEMY_IDS.slice(0, EXPECTED_BOSS_COUNTS[i]);
+      if (
+        st.bossSequence.length !== expectedSeq.length ||
+        st.bossSequence.some((id, idx) => id !== expectedSeq[idx])
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Stage ${st.id} bossSequence must strictly match [${expectedSeq.join(', ')}]`,
+        });
+      }
       for (let b = 0; b < st.bossSpawnTimesSec.length; b++) {
         const t = st.bossSpawnTimesSec[b]!;
         if (b === 0 && t !== 120) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `Stage ${st.id} first boss must spawn at 120s (2-minute cadence), got ${t}s`,
+            message: `Stage ${st.id} first boss must spawn at 120s (2-minute mark), got ${t}s`,
           });
         }
         if (t >= st.durationLimitSec) {
@@ -346,10 +359,10 @@ export const GameConfigBundleSchema = z
             message: `Stage ${st.id} boss #${b + 1} spawn time (${t}s) must be strictly less than durationLimitSec (${st.durationLimitSec}s)`,
           });
         }
-        if (b > 0 && t - st.bossSpawnTimesSec[b - 1]! !== 120) {
+        if (b > 0 && t - st.bossSpawnTimesSec[b - 1]! !== 60) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `Stage ${st.id} bosses must spawn at 120s (2-minute) intervals`,
+            message: `Stage ${st.id} subsequent bosses must spawn at 60s (1-minute) intervals after the first boss`,
           });
         }
       }

@@ -7,6 +7,7 @@ import type {
   AltarEntityState,
   AppFsmState,
   BeaconKind,
+  BossEnemyId,
   BossPhase,
   DefeatReason,
   EnemyEntityState,
@@ -39,7 +40,7 @@ export type GameEvent =
   | { readonly type: 'CHEST_OPENED'; readonly evolvedTo: EvolutionId | null; readonly grantedCrystals: number }
   | { readonly type: 'ALTAR_COMPLETED'; readonly x: number; readonly y: number; readonly shockwaveRadiusPx: number }
   | { readonly type: 'BEACON_TRIGGERED'; readonly kind: BeaconKind; readonly x: number; readonly y: number }
-  | { readonly type: 'BOSS_SPAWNED'; readonly enemyId: 'boss_void_weaver'; readonly x: number; readonly y: number }
+  | { readonly type: 'BOSS_SPAWNED'; readonly enemyId: BossEnemyId; readonly x: number; readonly y: number }
   | { readonly type: 'BOSS_PHASE_CHANGED'; readonly newPhase: 2 | 3; readonly x: number; readonly y: number }
   | { readonly type: 'BOSS_IMMUNE'; readonly x: number; readonly y: number; readonly label: string }
   | { readonly type: 'BOSS_DEATH_OUTRO_STARTED'; readonly x: number; readonly y: number; readonly radiusPx: number; readonly durationSec: number }
@@ -132,6 +133,7 @@ export interface RenderEnemyBulletView {
   readonly x: number;
   readonly y: number;
   readonly radiusPx: number;
+  readonly colorHex?: string;
 }
 
 export interface RenderXpGemView {
@@ -170,6 +172,7 @@ export interface RenderTelegraphView {
   readonly endY: number;
   readonly radiusPx: number;
   readonly progressRatio: number;
+  readonly colorHex?: string;
 }
 
 export interface EdgeIndicatorView {
@@ -185,6 +188,7 @@ export interface RenderVictoryOutroView {
   readonly bossX: number;
   readonly bossY: number;
   readonly bossRadiusPx: number;
+  readonly bossEnemyId: BossEnemyId;
 }
 
 export interface RenderSnapshot {
@@ -318,6 +322,7 @@ export interface WeaponDamageStatView {
 }
 
 export interface BossHudView {
+  readonly enemyId: BossEnemyId;
   readonly name: string;
   readonly hp: number;
   readonly maxHp: number;

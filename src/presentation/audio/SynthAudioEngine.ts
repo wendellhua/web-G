@@ -451,10 +451,40 @@ export class SynthAudioEngine {
           }
           break;
         }
-        case 'BOSS_SPAWNED':
+        case 'BOSS_SPAWNED': {
+          if (!this.canTrigger('boss_alert', 200, true)) break;
+          if (ev.enemyId === 'boss_pulsar_bastion') {
+            // B2 重装脉冲磁暴堡垒：厚重双联工业低频轰鸣
+            this.playTone(55.0, 0.65, 'sawtooth', 0.15, 48);
+            this.playTone(110.0, 0.55, 'square', 0.08, 82, 0.08);
+            this.playNoiseBurst(0.36, 0.09, 'lowpass', 920, 140, 1.6);
+          } else if (ev.enemyId === 'boss_phase_hydra') {
+            // B3 相位裂隙魔眼：诡谲空间撕裂高频折跃滑音
+            this.playTone(220, 0.48, 'triangle', 0.11, 580);
+            this.playTone(82.41, 0.58, 'sawtooth', 0.12, 65, 0.05);
+            this.playNoiseBurst(0.32, 0.08, 'bandpass', 2400, 480, 2.4);
+          } else if (ev.enemyId === 'boss_solar_leviathan') {
+            // B4 焚星熔核利维坦：火山巨兽低吼与炽焰喷发
+            this.playTone(49.0, 0.72, 'sawtooth', 0.16, 36);
+            this.playTone(146.83, 0.55, 'sawtooth', 0.09, 73, 0.07);
+            this.playNoiseBurst(0.45, 0.11, 'lowpass', 1100, 95, 1.4);
+          } else if (ev.enemyId === 'boss_void_empress') {
+            // B5 黑潮终焉女皇：帝王圣裁和弦 + 深渊铜管 Braam
+            this.playTone(65.41, 0.75, 'sawtooth', 0.15, 58);
+            [261.63, 311.13, 392.0, 523.25].forEach((f, idx) => {
+              this.playTone(f, 0.52, 'triangle', 0.065, undefined, 0.06 + idx * 0.05);
+            });
+            this.playNoiseBurst(0.38, 0.09, 'bandpass', 1600, 220, 1.8);
+          } else {
+            // B1 虚空织主：经典深空科幻铜管压迫警报（Braam）
+            this.playTone(65.41, 0.6, 'sawtooth', 0.14, 58);
+            this.playTone(98.0, 0.55, 'sawtooth', 0.1, 88, 0.06);
+            this.playNoiseBurst(0.32, 0.075, 'lowpass', 780, 160, 1.8);
+          }
+          break;
+        }
         case 'BOSS_PHASE_CHANGED': {
           if (!this.canTrigger('boss_alert', 200, true)) break;
-          // 深空科幻铜管压迫警报（Braam）
           this.playTone(65.41, 0.6, 'sawtooth', 0.14, 58);
           this.playTone(98.0, 0.55, 'sawtooth', 0.1, 88, 0.06);
           this.playNoiseBurst(0.32, 0.075, 'lowpass', 780, 160, 1.8);

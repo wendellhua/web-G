@@ -149,7 +149,7 @@ test.describe('VOID RUNNER V2.0 Real-Browser E2E Regression Suite', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('3. Form II auto-unlock announcement at Clear #3, Stage 5 (Lv.5 starter + 4 Bosses) -> Endless Mode & corrupted save recovery', async ({ page }) => {
+  test('3. Form II auto-unlock announcement at Clear #3, Stage 5 (Lv.5 starter + 5 distinct Bosses) -> Endless Mode & corrupted save recovery', async ({ page }) => {
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     page.on('console', (msg) => {
@@ -190,7 +190,7 @@ test.describe('VOID RUNNER V2.0 Real-Browser E2E Regression Suite', () => {
 
     await page.getByTestId('btn-start-run').click();
     await expect(page.getByTestId('hud-timer')).toContainText('09:00');
-    await expect(page.getByTestId('hud-boss-progress')).toContainText('0/4');
+    await expect(page.getByTestId('hud-boss-progress')).toContainText('0/5');
 
     // 校验阶段 5 开局追踪脉冲枪直接满级 Lv.5
     const stage5Hud = await page.evaluate(() => {

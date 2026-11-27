@@ -14,13 +14,26 @@ describe('V2.0 GAME_CONFIG 五大阶段/五形态静态配置表与 Zod 强校�
     const res = GameConfigBundleSchema.safeParse(GAME_CONFIG);
     expect(res.success).toBe(true);
     expect(GAME_CONFIG.stages.map((s) => s.durationLimitSec)).toEqual([180, 300, 420, 540, 540]);
-    expect(GAME_CONFIG.stages.map((s) => s.bossSpawnTimesSec.length)).toEqual([1, 2, 3, 4, 4]);
+    expect(GAME_CONFIG.stages.map((s) => s.bossSpawnTimesSec.length)).toEqual([1, 2, 3, 4, 5]);
     expect(GAME_CONFIG.stages.map((s) => s.bossSpawnTimesSec)).toEqual([
       [120],
-      [120, 240],
-      [120, 240, 360],
-      [120, 240, 360, 480],
-      [120, 240, 360, 480],
+      [120, 180],
+      [120, 180, 240],
+      [120, 180, 240, 300],
+      [120, 180, 240, 300, 360],
+    ]);
+    expect(GAME_CONFIG.stages.map((s) => s.bossSequence)).toEqual([
+      ['boss_void_weaver'],
+      ['boss_void_weaver', 'boss_pulsar_bastion'],
+      ['boss_void_weaver', 'boss_pulsar_bastion', 'boss_phase_hydra'],
+      ['boss_void_weaver', 'boss_pulsar_bastion', 'boss_phase_hydra', 'boss_solar_leviathan'],
+      [
+        'boss_void_weaver',
+        'boss_pulsar_bastion',
+        'boss_phase_hydra',
+        'boss_solar_leviathan',
+        'boss_void_empress',
+      ],
     ]);
     expect(GAME_CONFIG.forms.map((f) => f.requiredTotalClears)).toEqual([0, 3, 8, 16, 25]);
     expect(GAME_CONFIG.forms.map((f) => `${f.maxActiveSlots}+${f.maxPassiveSlots}`)).toEqual([
@@ -71,6 +84,20 @@ describe('V2.0 GAME_CONFIG 五大阶段/五形态静态配置表与 Zod 强校�
     const brokenStage = structuredClone(GAME_CONFIG);
     brokenStage.stages[0]!.durationLimitSec = 999;
     expect(GameConfigBundleSchema.safeParse(brokenStage).success).toBe(false);
+
+    const brokenBossInterval = structuredClone(GAME_CONFIG);
+    brokenBossInterval.stages[1]!.bossSpawnTimesSec = [120, 240];
+    expect(GameConfigBundleSchema.safeParse(brokenBossInterval).success).toBe(false);
+
+    const brokenBossSeq = structuredClone(GAME_CONFIG);
+    brokenBossSeq.stages[4]!.bossSequence = [
+      'boss_void_weaver',
+      'boss_void_weaver',
+      'boss_void_weaver',
+      'boss_void_weaver',
+      'boss_void_weaver',
+    ];
+    expect(GameConfigBundleSchema.safeParse(brokenBossSeq).success).toBe(false);
   });
 
   it('数值护栏：冷却缩减钳制与无尽模式封顶防溢出', () => {

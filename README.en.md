@@ -31,7 +31,7 @@
 
 **VOID RUNNER (《黑潮突围》)** is a zero-game-engine, pure browser sci-fi Bullet-Heaven / Survivors-like game engineered with **TypeScript + HTML5 Canvas 2D + Web Audio API**:
 
-- **Tight, High-Intensity Progression**: 5 progressive campaign stages across 36 escalating levels, 5 auto-awakening starfighter forms (`2+1 → 4+4` slots), 6 active weapons × 6 passive cores → 6 evolution super-weapons, multi-phase *Void Weaver* Boss encounters every 2 minutes, holographic laser warning corridors, Charging Altars, and 8 permanent meta talents with free full refunds.
+- **Tight, High-Intensity Progression**: 5 progressive campaign stages across 36 escalating levels, 5 auto-awakening starfighter forms (`2+1 → 4+4` slots), 6 active weapons × 6 passive cores → 6 evolution super-weapons, multi-phase *Void Weaver* Boss encounters starting at `02:00` with tight 1-minute follow-up waves, holographic laser warning corridors, Charging Altars, and 8 permanent meta talents with free full refunds.
 - **Flagship Open-Source SDD-G Reference**: A complete, reproducible showcase of **Spec-Driven Development for Games**—preserving every artifact from a 1-page GDD-Lite and single-file playable greybox prototype (`prototype/index.html`) to Zod-enforced data contracts, a 100% headless deterministic simulation core (`src/core/**`), 45,000-frame headless soak tests, and Playwright real-browser E2E regression suites. To rerun the pipeline, start with the constitution [`docs/CLAUDE.md`](./docs/CLAUDE.md) and the stage prompts in the [`SDD-G workflow handbook`](./docs/SDD-G工作流提示词手册.md).
 
 ---
@@ -91,17 +91,17 @@
 
 ## 🎮 Core Gameplay & Features
 
-### 1. Five-Stage Progressive Campaign (36 Levels · 2-Min Boss Cadence · Instant Victory on Final Kill)
+### 1. Five-Stage Progressive Campaign (36 Levels · Tight 1-Min Follow-Up Boss Cadence · Instant Victory on Final Kill)
 
-Every stage spawns a multi-phase *Void Weaver* Boss strictly **every 2 minutes** starting at `02:00`. **Eliminating all required Bosses immediately completes the level and triggers settlement** (failing to clear them before the timer expires triggers a timeout defeat while preserving your current level and earned Void Crystals):
+Every stage spawns its first multi-phase *Void Weaver* Boss at `02:00`; on multi-Boss stages, each subsequent Boss arrives **every 1 minute** after the first (e.g., `02:00 / 03:00 / 04:00 / 05:00` for 4 Bosses) while stage timers remain unchanged. **Eliminating all required Bosses immediately completes the level and triggers settlement** (failing to clear them before the timer expires triggers a timeout defeat while preserving your current level and earned Void Crystals):
 
-| Stage | Levels | Auto-Unlocked Starfighter Form | Starter Weapon | Slot Cap (Active+Passive) | Boss Count (Every 2m) | Time Limit | Highlights |
+| Stage | Levels | Auto-Unlocked Starfighter Form | Starter Weapon | Slot Cap (Active+Passive) | Boss Count (02:00, then +1m) | Time Limit | Highlights |
 | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
 | **Stage 1** | Lv. 1 – 3 | Form I · Initiate Frame | `Lv.1` | `2 + 1` | **1** (`02:00`) | **3 min** | Fast-paced intro trial & tight build draft |
-| **Stage 2** | Lv. 4 – 8 | Form II · Pulse Striker | `Lv.2` | `2 + 2` | **2** (`02:00 / 04:00`) | **5 min** | Adds Spitters, Heavy Tanks & Crimson Vanguard Elites |
-| **Stage 3** | Lv. 9 – 16 | Form III · Phase Raider | `Lv.3` | `3 + 2` | **3** (`02:00 / 04:00 / 06:00`) | **7 min** | Adds Bombers, Abyssal Prisms & dual Charging Altars |
-| **Stage 4** | Lv. 17 – 25 | Form IV · Astral Sovereign | `Lv.4` | `3 + 3` | **4** (`02:00 – 08:00`) | **9 min** | Adds Splitters, full enemy roster & +20% late-game pressure |
-| **Stage 5** | Lv. 26 – 36 | Form V · Void Apex | `Lv.5` | `4 + 4` | **4** (`02:00 – 08:00`) | **9 min** | Full 4+4 slots, Lv.5 starter, unlocks **Endless Mode** on clear |
+| **Stage 2** | Lv. 4 – 8 | Form II · Pulse Striker | `Lv.2` | `2 + 2` | **2** (`02:00 / 03:00`) | **5 min** | Adds Spitters, Heavy Tanks & Crimson Vanguard Elites |
+| **Stage 3** | Lv. 9 – 16 | Form III · Phase Raider | `Lv.3` | `3 + 2` | **3** (`02:00 / 03:00 / 04:00`) | **7 min** | Adds Bombers, Abyssal Prisms & dual Charging Altars |
+| **Stage 4** | Lv. 17 – 25 | Form IV · Astral Sovereign | `Lv.4` | `3 + 3` | **4** (`02:00 / 03:00 / 04:00 / 05:00`) | **9 min** | Adds Splitters, full enemy roster & +20% late-game pressure |
+| **Stage 5** | Lv. 26 – 36 | Form V · Void Apex | `Lv.5` | `4 + 4` | **5 Distinct** (`02:00 – 06:00`) | **9 min** | Full 4+4 slots, 5 unique Bosses culminating in Void Empress, unlocks **Endless Mode** |
 
 ### 2. Six Active Weapons × Six Passive Cores → Six Evolution Super-Weapons
 

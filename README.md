@@ -23,7 +23,7 @@
 </div>
 
 > 🎮 **推荐优先在线体验（无需下载与配置环境，打开浏览器即玩）**：  
-> 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)**（支持桌面端 `WASD` / 方向键 / 鼠标拖拽与移动端触控，内置本地存档与 `1× / 2× / 3×` 变速）
+> 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)**（支持桌面端 `WASD` / 方向键移动，内置本地存档与 `1× / 2× / 3×` 变速）
 
 ---
 

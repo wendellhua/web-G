@@ -23,7 +23,7 @@
 </div>
 
 > 🎮 **Play Online First (Recommended — Zero Setup, Instant Browser Play)**:  
-> 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)** (Supports `WASD` / Arrow Keys / Mouse drag & Touch controls, local save persistence, and `1× / 2× / 3×` battle speed)
+> 👉 **[https://wendellhua.github.io/web-G/](https://wendellhua.github.io/web-G/)** (Supports `WASD` / Arrow Keys  controls, local save persistence, and `1× / 2× / 3×` battle speed)
 
 ---
 

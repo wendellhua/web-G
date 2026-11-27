@@ -31,7 +31,7 @@ describe('V2.0 GAME_CONFIG 五大阶段/五形态静态配置表与 Zod 强校�
       '4+4',
     ]);
     expect(GAME_CONFIG.forms.map((f) => f.starterWeaponLevel)).toEqual([1, 2, 3, 4, 5]);
-    expect(GAME_CONFIG.forms.map((f) => f.baseAttackBonusRatio)).toEqual([0, 0.1, 0.2, 0.3, 0.4]);
+    expect(GAME_CONFIG.forms.map((f) => f.baseAttackBonusRatio)).toEqual([0, 0.05, 0.1, 0.15, 0.2]);
   });
 
   it('关卡号与累计通关数映射至五大阶段边界 100% 精准', () => {

@@ -238,7 +238,7 @@ const EXPECTED_CLEAR_THRESHOLDS = [0, 3, 8, 16, 25] as const;
 const EXPECTED_ACTIVE_SLOTS = [2, 2, 3, 3, 4] as const;
 const EXPECTED_PASSIVE_SLOTS = [1, 2, 2, 3, 4] as const;
 const EXPECTED_STARTER_LEVELS = [1, 2, 3, 4, 5] as const;
-const EXPECTED_FORM_BASE_ATK_BONUS = [0, 0.1, 0.2, 0.3, 0.4] as const;
+const EXPECTED_FORM_BASE_ATK_BONUS = [0, 0.05, 0.1, 0.15, 0.2] as const;
 const EXPECTED_STAGE_DURATIONS_SEC = [180, 300, 420, 540, 540] as const;
 const EXPECTED_BOSS_COUNTS = [1, 2, 3, 4, 4] as const;
 

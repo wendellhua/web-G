@@ -556,7 +556,7 @@ export class UiOverlayManager {
           <div class="panel-header">
             <div>
               <div class="panel-kicker">HANGAR EVOLUTION ARCHIVE</div>
-              <h2>主角五形态自动进阶路线（每升级 1 阶机体，基础攻击力 +10%）</h2>
+              <h2>主角五形态自动进阶路线（每升级 1 阶机体，基础攻击力 +5%）</h2>
             </div>
             <button class="btn" data-testid="btn-back-main">返回主页</button>
           </div>

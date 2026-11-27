@@ -258,6 +258,7 @@ export interface FormUnlockAnnouncement {
   readonly maxActiveSlots: number;
   readonly maxPassiveSlots: number;
   readonly starterWeaponLevel: number;
+  readonly baseAttackBonusRatio: number;
   readonly durationLimitSec: number;
   readonly bossCount: number;
 }
@@ -354,6 +355,7 @@ export interface MetaFormHudView {
   readonly maxActiveSlots: number;
   readonly maxPassiveSlots: number;
   readonly starterWeaponLevel: number;
+  readonly baseAttackBonusRatio: number;
   readonly stageDurationSec: number;
   readonly stageBossCount: number;
   readonly unlocked: boolean;
@@ -372,6 +374,7 @@ export interface MetaCareerHudView {
   readonly maxActiveSlots: number;
   readonly maxPassiveSlots: number;
   readonly starterWeaponLevel: number;
+  readonly baseAttackBonusRatio: number;
   readonly stageDurationLimitSec: number;
   readonly stageBossCount: number;
   readonly nextFormName: string | null;

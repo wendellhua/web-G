@@ -271,7 +271,13 @@ export class SimulationWorld {
 
   private createInitialPlayer(levelNumber: number): PlayerRuntimeState {
     const stage = resolveStageByLevelNumber(levelNumber);
-    const stats = recomputePlayerStats(GAME_CONFIG.balance, this.metaBonuses, [], this.buffs);
+    const stats = recomputePlayerStats(
+      GAME_CONFIG.balance,
+      this.metaBonuses,
+      [],
+      this.buffs,
+      this.currentForm.baseAttackBonusRatio,
+    );
     return {
       formId: stage.formId,
       stageId: stage.id,
@@ -457,6 +463,7 @@ export class SimulationWorld {
       this.metaBonuses,
       this.passives,
       this.buffs,
+      this.currentForm.baseAttackBonusRatio,
     );
     this.player.stats = nextStats;
     this.player.maxHp = nextStats.maxHp;

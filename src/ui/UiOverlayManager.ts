@@ -476,6 +476,7 @@ export class UiOverlayManager {
                   <div class="career-chips">
                     <span class="career-chip">卡槽 <strong>${career.maxActiveSlots}+${career.maxPassiveSlots}</strong></span>
                     <span class="career-chip">主武 <strong>Lv.${career.starterWeaponLevel}</strong></span>
+                    <span class="career-chip">基础攻击 <strong style="color:#facc15">${Math.round((1 + career.baseAttackBonusRatio) * 100)}%</strong></span>
                     <span class="career-chip">时限 <strong>${Math.round(career.stageDurationLimitSec / 60)} 分钟</strong></span>
                     <span class="career-chip">Boss <strong style="color:#fda4af">${career.stageBossCount} 只</strong></span>
                   </div>
@@ -541,6 +542,7 @@ export class UiOverlayManager {
               <div class="form-stat-list">
                 <div class="form-stat-row"><span>技能卡槽</span><strong style="color:#38bdf8;">${f.maxActiveSlots}+${f.maxPassiveSlots}</strong></div>
                 <div class="form-stat-row"><span>开局主武</span><strong style="color:#facc15;">LV.${f.starterWeaponLevel}</strong></div>
+                <div class="form-stat-row"><span>基础攻击</span><strong style="color:#34d399;">${f.baseAttackBonusRatio > 0 ? `+${Math.round(f.baseAttackBonusRatio * 100)}%` : '100%'}</strong></div>
                 <div class="form-stat-row"><span>阶段挑战</span><strong style="color:#fda4af;">${Math.round(f.stageDurationSec / 60)}分 / ${f.stageBossCount} Boss</strong></div>
               </div>
               <div style="font-size:11px;margin-top:2px;">${badge}</div>
@@ -554,7 +556,7 @@ export class UiOverlayManager {
           <div class="panel-header">
             <div>
               <div class="panel-kicker">HANGAR EVOLUTION ARCHIVE</div>
-              <h2>主角五形态自动进阶路线（基础面板统一由天赋强化）</h2>
+              <h2>主角五形态自动进阶路线（每升级 1 阶机体，基础攻击力 +10%）</h2>
             </div>
             <button class="btn" data-testid="btn-back-main">返回主页</button>
           </div>
@@ -1007,7 +1009,7 @@ export class UiOverlayManager {
             <div style="font-size:12px;font-weight:800;color:#facc15;letter-spacing:0.8px;">⚡ 角色形态自动进阶解锁！</div>
             <div style="font-size:20px;font-weight:900;color:#fff;margin:4px 0;">${s.newlyUnlockedForm.formName} · 晋级 ${s.newlyUnlockedForm.stageName}</div>
             <div style="font-size:13px;color:#e2e8f0;">
-              技能卡槽解放至 <strong>${s.newlyUnlockedForm.maxActiveSlots} 主动 + ${s.newlyUnlockedForm.maxPassiveSlots} 被动</strong> ｜ 开局主武升至 <strong>LV.${s.newlyUnlockedForm.starterWeaponLevel}</strong> ｜ 新阶段时限 <strong>${Math.round(s.newlyUnlockedForm.durationLimitSec / 60)} 分钟</strong>（<strong>${s.newlyUnlockedForm.bossCount} 只 Boss</strong>）
+              基础攻击力升至 <strong style="color:#34d399">${Math.round((1 + s.newlyUnlockedForm.baseAttackBonusRatio) * 100)}%（+${Math.round(s.newlyUnlockedForm.baseAttackBonusRatio * 100)}%）</strong> ｜ 技能卡槽解放至 <strong>${s.newlyUnlockedForm.maxActiveSlots} 主动 + ${s.newlyUnlockedForm.maxPassiveSlots} 被动</strong> ｜ 开局主武升至 <strong>LV.${s.newlyUnlockedForm.starterWeaponLevel}</strong> ｜ 新阶段时限 <strong>${Math.round(s.newlyUnlockedForm.durationLimitSec / 60)} 分钟</strong>（<strong>${s.newlyUnlockedForm.bossCount} 只 Boss</strong>）
             </div>
           </div>
         </div>

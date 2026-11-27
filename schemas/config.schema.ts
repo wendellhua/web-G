@@ -67,6 +67,7 @@ export const FormConfigSchema = z.object({
   maxPassiveSlots: z.number().int().min(1).max(4),
   starterWeaponId: WeaponIdSchema,
   starterWeaponLevel: z.number().int().min(1).max(5),
+  baseAttackBonusRatio: NonNegativeFiniteNumber.max(2).default(0),
 });
 export type FormConfig = z.infer<typeof FormConfigSchema>;
 
@@ -237,6 +238,7 @@ const EXPECTED_CLEAR_THRESHOLDS = [0, 3, 8, 16, 25] as const;
 const EXPECTED_ACTIVE_SLOTS = [2, 2, 3, 3, 4] as const;
 const EXPECTED_PASSIVE_SLOTS = [1, 2, 2, 3, 4] as const;
 const EXPECTED_STARTER_LEVELS = [1, 2, 3, 4, 5] as const;
+const EXPECTED_FORM_BASE_ATK_BONUS = [0, 0.1, 0.2, 0.3, 0.4] as const;
 const EXPECTED_STAGE_DURATIONS_SEC = [180, 300, 420, 540, 540] as const;
 const EXPECTED_BOSS_COUNTS = [1, 2, 3, 4, 4] as const;
 
@@ -310,6 +312,12 @@ export const GameConfigBundleSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `Starter weapon level must be ${EXPECTED_STARTER_LEVELS[i]} at index ${i}`,
+        });
+      }
+      if (Math.abs(fm.baseAttackBonusRatio - EXPECTED_FORM_BASE_ATK_BONUS[i]!) > 1e-6) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Form ${fm.id} baseAttackBonusRatio must be ${EXPECTED_FORM_BASE_ATK_BONUS[i]}`,
         });
       }
       if (st.durationLimitSec !== EXPECTED_STAGE_DURATIONS_SEC[i]) {

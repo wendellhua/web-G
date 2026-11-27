@@ -685,4 +685,29 @@ describe('V2.0 宏观 FSM、超时判败、多 Boss 通关进阶、两段无尽�
     const endlessDelta = calculateEndlessDeltaCrystals(120, endlessEco, 1);
     expect(endlessDelta).toBe(108 + 48);
   });
+
+  it('机体进阶基础攻击校验：每更新 1 阶战斗机型，机体基础攻击力严格提升 10%（1.0× → 1.4×）且与天赋叠加生效', () => {
+    const cases = [
+      { cleared: 0, expectedMult: 1.0 },
+      { cleared: 3, expectedMult: 1.1 },
+      { cleared: 8, expectedMult: 1.2 },
+      { cleared: 16, expectedMult: 1.3 },
+      { cleared: 25, expectedMult: 1.4 },
+    ];
+    for (const c of cases) {
+      const ctrl = new GameController(new SaveManager(new InMemoryStorage()));
+      ctrl.debugSetClearedLevels(c.cleared);
+      ctrl.startRun(888 + c.cleared);
+      expect(ctrl.world.player.stats.damageMult).toBeCloseTo(c.expectedMult, 6);
+    }
+
+    // 校验与局外攻击天赋叠加：形态 V（1.4× 基础攻击）× 1 级能量过载天赋（+8%）= 1.512×
+    const ctrlWithTalent = new GameController(new SaveManager(new InMemoryStorage()));
+    ctrlWithTalent.debugSetClearedLevels(25);
+    ctrlWithTalent.debugGrantCrystals(500);
+    expect(ctrlWithTalent.buyTalent('energy_overload').ok).toBe(true);
+    ctrlWithTalent.startRun(999);
+    const overloadBonus = GAME_CONFIG.talents.find((t) => t.id === 'energy_overload')!.valuePerLevel;
+    expect(ctrlWithTalent.world.player.stats.damageMult).toBeCloseTo(1.4 * (1 + overloadBonus), 6);
+  });
 });

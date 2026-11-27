@@ -142,6 +142,7 @@ export class GameController {
         maxActiveSlots: st.maxActiveSlots,
         maxPassiveSlots: st.maxPassiveSlots,
         starterWeaponLevel: st.starterWeaponLevel,
+        baseAttackBonusRatio: fm.baseAttackBonusRatio,
         durationLimitSec: st.durationLimitSec,
         bossCount: st.bossSpawnTimesSec.length,
       });
@@ -388,6 +389,7 @@ export class GameController {
         maxActiveSlots: careerStage.maxActiveSlots,
         maxPassiveSlots: careerStage.maxPassiveSlots,
         starterWeaponLevel: careerStage.starterWeaponLevel,
+        baseAttackBonusRatio: careerForm.baseAttackBonusRatio,
         stageDurationLimitSec: careerStage.durationLimitSec,
         stageBossCount: careerStage.bossSpawnTimesSec.length,
         nextFormName: nextProg.nextForm?.name ?? null,
@@ -408,6 +410,7 @@ export class GameController {
           maxActiveSlots: fm.maxActiveSlots,
           maxPassiveSlots: fm.maxPassiveSlots,
           starterWeaponLevel: fm.starterWeaponLevel,
+          baseAttackBonusRatio: fm.baseAttackBonusRatio,
           stageDurationSec: st.durationLimitSec,
           stageBossCount: st.bossSpawnTimesSec.length,
           unlocked: this.saveData.career.clearedLevelsCount >= fm.requiredTotalClears,
